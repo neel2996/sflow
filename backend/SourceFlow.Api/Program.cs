@@ -56,15 +56,9 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Swagger
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Middleware
-app.UseSwagger();
-app.UseSwaggerUI();
 
 app.UseCors("AllowExtension");
 app.UseAuthentication();
