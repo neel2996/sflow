@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SourceFlow.Api.Data;
@@ -11,9 +12,11 @@ using SourceFlow.Api.Data;
 namespace SourceFlow.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260222180000_AddFeedbackTable")]
+    partial class AddFeedbackTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,6 +24,34 @@ namespace SourceFlow.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("SourceFlow.Api.Models.CreditTransaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreditsChanged")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("CreditTransactions");
+                });
 
             modelBuilder.Entity("SourceFlow.Api.Models.Feedback", b =>
                 {
@@ -52,34 +83,6 @@ namespace SourceFlow.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Feedbacks");
-                });
-
-            modelBuilder.Entity("SourceFlow.Api.Models.CreditTransaction", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("CreditsChanged")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("CreditTransactions");
                 });
 
             modelBuilder.Entity("SourceFlow.Api.Models.Job", b =>
@@ -323,16 +326,6 @@ namespace SourceFlow.Api.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("SourceFlow.Api.Models.Feedback", b =>
-                {
-                    b.HasOne("SourceFlow.Api.Models.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("SourceFlow.Api.Models.CreditTransaction", b =>
                 {
                     b.HasOne("SourceFlow.Api.Models.User", "User")
@@ -340,6 +333,16 @@ namespace SourceFlow.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("SourceFlow.Api.Models.Feedback", b =>
+                {
+                    b.HasOne("SourceFlow.Api.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("User");
                 });

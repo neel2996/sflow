@@ -303,7 +303,7 @@ export default function Panel() {
     try {
       const me = await api.getMe();
       setAuthed(true);
-      setCredits(me.credits);
+      setCredits(me.credits ?? 0);
       setCountry(me.country || "IN");
       const jobList = await api.getJobs();
       setJobs(jobList);
@@ -345,7 +345,7 @@ export default function Panel() {
       setResult(data);
       setScannedProfile({ name, profileUrl: cleanUrl });
       const me = await api.getMe();
-      setCredits(me.credits);
+      setCredits(me.credits ?? 0);
     } catch (err) {
       setError(err.message);
       if (err.statusCode === 403 || err.code === "PAYWALL") {
@@ -400,7 +400,7 @@ export default function Panel() {
           >
             Legal
           </span>
-          {authed && <span style={styles.credits}>{credits} credits</span>}
+          {authed && <span style={styles.credits}>{credits ?? 0} credits</span>}
           <button
             onClick={() => setOpen(false)}
             style={{ background: "none", border: "none", fontSize: "18px", cursor: "pointer", color: COLORS.textLight, padding: "0 4px" }}

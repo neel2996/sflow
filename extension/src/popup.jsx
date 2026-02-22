@@ -29,6 +29,13 @@ function App() {
   const [country, setCountry] = useState("IN");
   const [registerCountry, setRegisterCountry] = useState("IN");
 
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackType, setFeedbackType] = useState("feedback");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackEmail, setFeedbackEmail] = useState("");
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackToast, setFeedbackToast] = useState(false);
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -41,8 +48,9 @@ function App() {
     }
     try {
       const me = await api.getMe();
-      setUserEmail(me.email);
-      setCredits(me.credits);
+      const storedEmail = await getStoredEmail();
+      setUserEmail(me.email || storedEmail || "");
+      setCredits(me.credits ?? 0);
       setCountry(me.country || "IN");
       const jobList = await api.getJobs();
       setJobs(jobList);
@@ -106,6 +114,27 @@ function App() {
     }
   }
 
+  async function handleFeedbackSubmit(e) {
+    e.preventDefault();
+    if (!feedbackMessage.trim()) return;
+    setFeedbackSubmitting(true);
+    setError("");
+    try {
+      const emailToSend = feedbackEmail.trim() || (userEmail || "");
+      await api.submitFeedback(emailToSend || undefined, feedbackMessage.trim(), feedbackType);
+      setFeedbackOpen(false);
+      setFeedbackMessage("");
+      setFeedbackEmail("");
+      setFeedbackType("feedback");
+      setFeedbackToast(true);
+      setTimeout(() => setFeedbackToast(false), 4000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }
+
   if (view === "loading") {
     return <div style={s.container}><p style={{ textAlign: "center", padding: "20px" }}>Loading...</p></div>;
   }
@@ -152,12 +181,52 @@ function App() {
         <p style={s.toggle} onClick={() => { setIsRegister(!isRegister); setError(""); }}>
           {isRegister ? "Already have an account? Log in" : "New here? Register"}
         </p>
+        <p style={{ fontSize: "11px", color: COLORS.textLight, textAlign: "center", marginTop: "8px" }}>
+          <span style={{ color: COLORS.primary, cursor: "pointer", textDecoration: "underline" }} onClick={() => { setFeedbackEmail(""); setFeedbackOpen(true); }}>
+            Send Feedback
+          </span>
+        </p>
         <p style={{ fontSize: "11px", color: COLORS.textLight, textAlign: "center", marginTop: "12px" }}>
           By continuing, you agree to our{" "}
           <span style={{ color: COLORS.primary, cursor: "pointer", textDecoration: "underline" }} onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL("legal.html") })}>
             Terms & Privacy
           </span>
         </p>
+        {feedbackToast && (
+          <div style={s.toast}>Thanks! Your feedback helps us improve SourceFlow 🚀</div>
+        )}
+        {feedbackOpen && (
+          <div style={s.modalOverlay} onClick={() => !feedbackSubmitting && setFeedbackOpen(false)}>
+            <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ margin: "0 0 12px", fontSize: "15px", color: COLORS.text }}>Send Feedback</h3>
+              <form onSubmit={handleFeedbackSubmit}>
+                <select style={s.input} value={feedbackType} onChange={(e) => setFeedbackType(e.target.value)}>
+                  <option value="feedback">Feedback</option>
+                  <option value="bug">Bug</option>
+                  <option value="feature">Feature Request</option>
+                </select>
+                <textarea
+                  style={{ ...s.input, minHeight: "80px", resize: "vertical" }}
+                  placeholder="Your message..."
+                  value={feedbackMessage}
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  required
+                />
+                <input
+                  style={s.input}
+                  type="email"
+                  placeholder="Email (optional)"
+                  value={feedbackEmail}
+                  onChange={(e) => setFeedbackEmail(e.target.value)}
+                />
+                <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                  <button type="button" style={s.linkBtn} onClick={() => setFeedbackOpen(false)} disabled={feedbackSubmitting}>Cancel</button>
+                  <button type="submit" style={s.button} disabled={feedbackSubmitting}>{feedbackSubmitting ? "Sending..." : "Submit"}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -173,9 +242,11 @@ function App() {
       </div>
 
       <div style={s.infoRow}>
-        <span style={{ fontSize: "13px", color: COLORS.textLight }}>{userEmail}</span>
-        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={s.creditBadge}>{credits} credits</span>
+        <div style={{ fontSize: "13px", color: COLORS.textLight, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: "6px" }} title={userEmail}>
+          {userEmail || "—"}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={s.creditBadge}>{credits ?? 0} credits</span>
           <button
             onClick={async () => {
               try {
@@ -191,9 +262,9 @@ function App() {
           >
             Get Credits
           </button>
-        </span>
+        </div>
       </div>
-      <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+      <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
         <span style={{ fontSize: "12px", color: COLORS.textLight }}>Region:</span>
         <select
           style={{ ...s.input, marginBottom: 0, padding: "6px 10px", fontSize: "12px", width: "auto" }}
@@ -212,6 +283,7 @@ function App() {
           <option value="IN">India (INR)</option>
           <option value="US">USA / Other (USD)</option>
         </select>
+        <span style={{ ...s.linkBtn, fontSize: "11px", marginLeft: "auto" }} onClick={() => { setFeedbackEmail(userEmail || ""); setFeedbackOpen(true); }}>Send Feedback</span>
       </div>
 
 
@@ -326,6 +398,53 @@ function App() {
       )}
 
       {error && <p style={s.error}>{error}</p>}
+
+      {feedbackToast && (
+        <div style={s.toast}>
+          Thanks! Your feedback helps us improve SourceFlow 🚀
+        </div>
+      )}
+
+      {feedbackOpen && (
+        <div style={s.modalOverlay} onClick={() => !feedbackSubmitting && setFeedbackOpen(false)}>
+          <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 12px", fontSize: "15px", color: COLORS.text }}>Send Feedback</h3>
+            <form onSubmit={handleFeedbackSubmit}>
+              <select
+                style={s.input}
+                value={feedbackType}
+                onChange={(e) => setFeedbackType(e.target.value)}
+              >
+                <option value="feedback">Feedback</option>
+                <option value="bug">Bug</option>
+                <option value="feature">Feature Request</option>
+              </select>
+              <textarea
+                style={{ ...s.input, minHeight: "80px", resize: "vertical" }}
+                placeholder="Your message..."
+                value={feedbackMessage}
+                onChange={(e) => setFeedbackMessage(e.target.value)}
+                required
+              />
+              <input
+                style={s.input}
+                type="email"
+                placeholder="Email (optional)"
+                value={feedbackEmail}
+                onChange={(e) => setFeedbackEmail(e.target.value)}
+              />
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <button type="button" style={s.linkBtn} onClick={() => setFeedbackOpen(false)} disabled={feedbackSubmitting}>
+                  Cancel
+                </button>
+                <button type="submit" style={s.button} disabled={feedbackSubmitting}>
+                  {feedbackSubmitting ? "Sending..." : "Submit"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -395,9 +514,8 @@ const s = {
   },
   infoRow: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "8px 12px",
+    flexDirection: "column",
+    padding: "10px 12px",
     backgroundColor: "#f8f9fa",
     borderRadius: "6px",
     marginBottom: "12px",
@@ -454,6 +572,37 @@ const s = {
   candidateItem: {
     padding: "8px 0",
     borderBottom: `1px solid ${COLORS.border}`,
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+  },
+  modal: {
+    backgroundColor: COLORS.bg,
+    padding: "20px",
+    borderRadius: "8px",
+    width: "90%",
+    maxWidth: "320px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  },
+  toast: {
+    position: "fixed",
+    bottom: "16px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    backgroundColor: "#057642",
+    color: "#fff",
+    padding: "10px 16px",
+    borderRadius: "8px",
+    fontSize: "13px",
+    fontWeight: "500",
+    zIndex: 1001,
+    boxShadow: "0 2px 12px rgba(0,0,0,0.2)",
   },
 };
 

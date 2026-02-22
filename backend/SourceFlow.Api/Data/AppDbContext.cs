@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<CreditTransaction> CreditTransactions => Set<CreditTransaction>();
     public DbSet<ProfileAnalysisCache> ProfileAnalysisCache => Set<ProfileAnalysisCache>();
     public DbSet<ShortlistedCandidate> ShortlistedCandidates => Set<ShortlistedCandidate>();
+    public DbSet<Feedback> Feedbacks => Set<Feedback>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

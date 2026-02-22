@@ -78,6 +78,8 @@ export const api = {
     request("POST", "/payments/create-order", { plan_id: planId }),
   createRazorpayOrder: (planId) =>
     request("POST", "/payments/create-razorpay-order", { plan_id: planId }),
+  submitFeedback: (email, message, type) =>
+    request("POST", "/feedback", { email: email || undefined, message, type }),
 };
 
 export { getToken, setAuth, clearAuth, getStoredEmail };
