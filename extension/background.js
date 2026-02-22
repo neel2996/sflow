@@ -1,5 +1,5 @@
-const API_BASE = "http://localhost:8080";
-//const API_BASE = "https://sflow-5diw.onrender.com";
+//const API_BASE = "http://localhost:8080";
+const API_BASE = "https://sflow-5diw.onrender.com";
 chrome.runtime.onInstalled.addListener(() => {
   console.log("SourceFlow extension installed");
 });
