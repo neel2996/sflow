@@ -9,6 +9,8 @@ public class AppDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<CreditTransaction> CreditTransactions => Set<CreditTransaction>();
     public DbSet<ProfileAnalysisCache> ProfileAnalysisCache => Set<ProfileAnalysisCache>();
     public DbSet<ShortlistedCandidate> ShortlistedCandidates => Set<ShortlistedCandidate>();

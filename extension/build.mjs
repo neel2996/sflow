@@ -13,6 +13,7 @@ const common = {
 const entries = [
   { entryPoints: ["src/content.jsx"], outfile: "dist/content.js" },
   { entryPoints: ["src/popup.jsx"], outfile: "dist/popup.js" },
+  { entryPoints: ["src/jobs.jsx"], outfile: "dist/jobs.js" },
 ];
 
 if (watch) {

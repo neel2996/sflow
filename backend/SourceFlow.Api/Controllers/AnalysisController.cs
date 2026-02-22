@@ -42,13 +42,23 @@ public class AnalysisController : ControllerBase
 
         var currentCredits = await _credits.GetCredits(userId);
         if (currentCredits <= 0)
-            return BadRequest(new { error = "No credits remaining" });
+            return StatusCode(403, new { error = "No credits remaining", code = "PAYWALL" });
 
         var deducted = await _credits.DeductCredit(userId);
         if (!deducted)
-            return BadRequest(new { error = "Failed to deduct credit" });
+            return StatusCode(403, new { error = "Failed to deduct credit", code = "PAYWALL" });
 
-        var result = await _ai.AnalyzeProfile(job.Description, req.ProfileText);
+        ScanResult result;
+        try
+        {
+            result = await _ai.AnalyzeProfile(job.Description, req.ProfileText);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("OpenAI"))
+        {
+            // Refund the credit since we didn't complete the analysis
+            await _credits.AddCredits(userId, 1, "Refund");
+            return StatusCode(503, new { error = ex.Message, code = "AI_SERVICE_ERROR" });
+        }
 
         // Always use client-computed experience — AI arithmetic is unreliable
         if (req.ComputedExperienceYears.HasValue && req.ComputedExperienceYears.Value > 0)

@@ -33,7 +33,8 @@ public class AuthController : ControllerBase
         {
             Email = req.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            Credits = 10,
+            CreditsBalance = 20,
+            Country = req.Country ?? "IN",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -44,7 +45,8 @@ public class AuthController : ControllerBase
         {
             Token = GenerateJwt(user),
             Email = user.Email,
-            Credits = user.Credits
+            Credits = user.CreditsBalance,
+            Country = user.Country
         });
     }
 
@@ -59,7 +61,8 @@ public class AuthController : ControllerBase
         {
             Token = GenerateJwt(user),
             Email = user.Email,
-            Credits = user.Credits
+            Credits = user.CreditsBalance,
+            Country = user.Country
         });
     }
 

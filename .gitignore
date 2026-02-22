@@ -23,3 +23,15 @@ Thumbs.db
 # Visual Studio
 *.user
 *.suo
+
+# DB files
+*.db
+*.db-shm
+*.db-wal
+sourceflow.db
+
+# Config backups
+*.save
+
+# Extension build
+extension/*.zip

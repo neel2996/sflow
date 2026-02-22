@@ -32,7 +32,10 @@ function request(method, path, body) {
           return;
         }
         if (!response || response.error) {
-          reject(new Error(response?.error || "Request failed"));
+          const err = new Error(response?.error || "Request failed");
+          err.statusCode = response?.statusCode;
+          err.code = response?.data?.code;
+          reject(err);
           return;
         }
         resolve(response.data);
@@ -67,6 +70,12 @@ export const api = {
       outreach_message: outreachMessage,
     }),
   getShortlist: (jobId) => request("GET", `/shortlist/${jobId}`),
+  getClientConfig: () => request("GET", "/payments/client-config"),
+  getPlans: (country) => request("GET", `/payments/plans?country=${country || "IN"}`),
+  createOrder: (planId) =>
+    request("POST", "/payments/create-order", { plan_id: planId }),
+  createRazorpayOrder: (planId) =>
+    request("POST", "/payments/create-razorpay-order", { plan_id: planId }),
 };
 
 export { getToken, setAuth, clearAuth, getStoredEmail };

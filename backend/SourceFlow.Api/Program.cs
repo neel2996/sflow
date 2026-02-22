@@ -13,12 +13,26 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(8080);
 });
 
-builder.Services.AddHealthChecks();
+// Database: PostgreSQL via DATABASE_URL or ConnectionStrings:DefaultConnection
+// Format: postgresql://USER:PASSWORD@HOST:5432/DB_NAME (postgres:// also supported)
+var connStr = Environment.GetEnvironmentVariable("DATABASE_URL")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrEmpty(connStr))
+    throw new InvalidOperationException("DATABASE_URL or ConnectionStrings:DefaultConnection must be set for PostgreSQL.");
+// Heroku/Render use postgres:// - Npgsql accepts both
+if (connStr.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase))
+    connStr = "postgresql://" + connStr["postgres://".Length..];
+
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("postgres");
 builder.Services.AddControllers();
 
-// SQLite
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connStr + ";SSL Mode=Require;Trust Server Certificate=true", npgsql =>
+    {
+        npgsql.EnableRetryOnFailure(3);
+        npgsql.CommandTimeout(30);
+    }));
 
 // JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -41,7 +55,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddScoped<AiService>();
 builder.Services.AddScoped<CreditService>();
 builder.Services.AddScoped<CacheService>();
+builder.Services.AddScoped<RazorpayService>();
+builder.Services.AddScoped<PaddleService>();
 builder.Services.AddHttpClient<AiService>();
+builder.Services.AddHttpClient();
 
 // CORS for Chrome extension + web
 builder.Services.AddCors(options =>
@@ -49,16 +66,17 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowExtension", policy =>
     {
         policy
-            .SetIsOriginAllowed(_ => true)
+            .AllowAnyOrigin()
             .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials();
+            .AllowAnyHeader();
     });
 });
 
 
 var app = builder.Build();
 
+if (app.Environment.IsDevelopment())
+    app.UseDeveloperExceptionPage();
 
 app.UseCors("AllowExtension");
 app.UseAuthentication();
@@ -67,15 +85,54 @@ app.UseAuthorization();
 // Health check
 app.MapHealthChecks("/health");
 
+// Payment redirect pages
+app.MapGet("/success", () => Results.Content(
+    "<!DOCTYPE html><html><head><title>Payment Complete</title></head><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>Payment complete!</h1><p>You can close this tab and return to SourceFlow.</p></body></html>",
+    "text/html"));
+app.MapGet("/cancel", () => Results.Content(
+    "<!DOCTYPE html><html><head><title>Cancelled</title></head><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>Payment cancelled</h1><p>You can close this tab.</p></body></html>",
+    "text/html"));
+
+app.MapGet("/paywall", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "wwwroot", "paywall.html");
+    return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
+});
+app.MapGet("/legal", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "wwwroot", "legal.html");
+    return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
+});
+
 // Controllers
 app.MapControllers();
 
 
-// 🔥 AUTO RUN MIGRATIONS (CRITICAL FIX FOR RENDER SQLITE)
+// Auto run migrations + seed plans
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+    await SeedPlansAsync(db);
 }
 
 app.Run();
+
+static async Task SeedPlansAsync(AppDbContext db)
+{
+    if (await db.Plans.AnyAsync()) return;
+
+    var plans = new[]
+    {
+        // India — one-time credit packs (Razorpay)
+        new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 99, Currency = "INR", Credits = 50, BillingType = "one_time", Provider = "razorpay" },
+        new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 199, Currency = "INR", Credits = 150, BillingType = "one_time", Provider = "razorpay" },
+        new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 999, Currency = "INR", Credits = 1000, BillingType = "one_time", Provider = "razorpay" },
+        // Global — subscription (USD, Paddle)
+        new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 9, Currency = "USD", Credits = 200, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_starter" },
+        new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 19, Currency = "USD", Credits = 600, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_growth" },
+        new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 49, Currency = "USD", Credits = 2000, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_pro" },
+    };
+    db.Plans.AddRange(plans);
+    await db.SaveChangesAsync();
+}

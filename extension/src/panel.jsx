@@ -286,6 +286,7 @@ export default function Panel() {
   const [scannedProfile, setScannedProfile] = useState(null);
   const [shortlisted, setShortlisted] = useState(false);
   const [shortlisting, setShortlisting] = useState(false);
+  const [country, setCountry] = useState("IN");
 
   useEffect(() => {
     checkAuth();
@@ -303,6 +304,7 @@ export default function Panel() {
       const me = await api.getMe();
       setAuthed(true);
       setCredits(me.credits);
+      setCountry(me.country || "IN");
       const jobList = await api.getJobs();
       setJobs(jobList);
       if (jobList.length > 0) setSelectedJob(jobList[0].id.toString());
@@ -346,6 +348,9 @@ export default function Panel() {
       setCredits(me.credits);
     } catch (err) {
       setError(err.message);
+      if (err.statusCode === 403 || err.code === "PAYWALL") {
+        chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country });
+      }
     } finally {
       setScanning(false);
     }
@@ -380,11 +385,21 @@ export default function Panel() {
     );
   }
 
+  function openPaywall() {
+    chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country });
+  }
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <h3 style={styles.logo}>SourceFlow</h3>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span
+            style={{ fontSize: "11px", color: COLORS.primary, cursor: "pointer", textDecoration: "none" }}
+            onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL("legal.html") })}
+          >
+            Legal
+          </span>
           {authed && <span style={styles.credits}>{credits} credits</span>}
           <button
             onClick={() => setOpen(false)}
@@ -424,11 +439,12 @@ export default function Panel() {
                 {scanning ? "Scanning..." : "Scan Profile"}
               </button>
 
-              {credits <= 0 && (
-                <p style={{ color: COLORS.warning, fontSize: "12px", marginTop: "8px", textAlign: "center" }}>
-                  No credits remaining
-                </p>
-              )}
+              <button
+                style={{ ...styles.button, marginTop: "8px", backgroundColor: COLORS.success, fontSize: "12px", padding: "8px" }}
+                onClick={openPaywall}
+              >
+                Get Credits
+              </button>
 
               {expDebug && (
                 <div style={{ marginTop: "8px", padding: "8px", background: "#f0f4ff", borderRadius: "6px", fontSize: "11px", color: "#333", border: "1px solid #c5d0f0" }}>

@@ -9,6 +9,8 @@ public class RegisterRequest
 
     [Required, MinLength(6)]
     public string Password { get; set; } = string.Empty;
+
+    public string? Country { get; set; }
 }
 
 public class LoginRequest
@@ -25,4 +27,5 @@ public class AuthResponse
     public string Token { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public int Credits { get; set; }
+    public string Country { get; set; } = "IN";
 }

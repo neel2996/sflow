@@ -12,12 +12,17 @@ public class AiService
     public AiService(HttpClient http, IConfiguration config)
     {
         _http = http;
-        _apiKey = config["OpenAI:ApiKey"]!;
+        _apiKey = config["OpenAI:ApiKey"]
+            ?? Environment.GetEnvironmentVariable("OPENAI_APIKEY")
+            ?? string.Empty;
         _model = config["OpenAI:Model"] ?? "gpt-4o-mini";
     }
 
     public async Task<ScanResult> AnalyzeProfile(string jobDescription, string profileText)
     {
+        if (string.IsNullOrWhiteSpace(_apiKey))
+            throw new InvalidOperationException("OpenAI API key is not configured. Set OpenAI:ApiKey in appsettings.json or the OPENAI_APIKEY environment variable.");
+
         var userPrompt = $$"""
             Compare the following job description against this LinkedIn profile.
 
@@ -70,7 +75,15 @@ public class AiService
         _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
 
         var response = await _http.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", requestBody);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(
+                $"OpenAI API error ({(int)response.StatusCode}): {response.ReasonPhrase}. " +
+                (response.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                    ? "Check that OpenAI:ApiKey is set correctly in appsettings.json."
+                    : body));
+        }
 
         var json = await response.Content.ReadFromJsonAsync<JsonDocument>();
         var content = json!.RootElement

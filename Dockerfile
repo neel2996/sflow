@@ -23,12 +23,10 @@
     FROM mcr.microsoft.com/dotnet/aspnet:8.0
     WORKDIR /app
     
-    # Copy published files from build stage
+    # Copy published files
     COPY --from=build /app/publish .
     
-    # Render requires apps to listen on port 10000
-    ENV ASPNETCORE_URLS=http://+:10000
-    EXPOSE 10000
+    # IMPORTANT: Render expects container to listen on 8080
+    EXPOSE 8080
     
-    # Start the API
     ENTRYPOINT ["dotnet", "SourceFlow.Api.dll"]

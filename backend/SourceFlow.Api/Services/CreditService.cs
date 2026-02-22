@@ -14,37 +14,44 @@ public class CreditService
 
     public async Task<bool> DeductCredit(int userId)
     {
-        await using var transaction = await _db.Database.BeginTransactionAsync();
-        try
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null || user.CreditsBalance <= 0)
+            return false;
+
+        user.CreditsBalance -= 1;
+
+        _db.CreditTransactions.Add(new CreditTransaction
         {
-            var user = await _db.Users.FindAsync(userId);
-            if (user == null || user.Credits <= 0)
-                return false;
+            UserId = userId,
+            CreditsChanged = -1,
+            Type = "Deduction",
+            CreatedAt = DateTime.UtcNow
+        });
 
-            user.Credits -= 1;
-
-            _db.CreditTransactions.Add(new CreditTransaction
-            {
-                UserId = userId,
-                CreditsChanged = -1,
-                Type = "Deduction",
-                CreatedAt = DateTime.UtcNow
-            });
-
-            await _db.SaveChangesAsync();
-            await transaction.CommitAsync();
-            return true;
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+        await _db.SaveChangesAsync();
+        return true;
     }
 
     public async Task<int> GetCredits(int userId)
     {
         var user = await _db.Users.FindAsync(userId);
-        return user?.Credits ?? 0;
+        return user?.CreditsBalance ?? 0;
+    }
+
+    public async Task<bool> AddCredits(int userId, int credits, string type = "Purchase")
+    {
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return false;
+
+        user.CreditsBalance += credits;
+        _db.CreditTransactions.Add(new CreditTransaction
+        {
+            UserId = userId,
+            CreditsChanged = credits,
+            Type = type,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return true;
     }
 }

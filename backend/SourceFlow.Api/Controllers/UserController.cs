@@ -28,7 +28,8 @@ public class UserController : ControllerBase
         {
             id = user.Id,
             email = user.Email,
-            credits = user.Credits,
+            credits = user.CreditsBalance,
+            country = user.Country,
             createdAt = user.CreatedAt
         });
     }

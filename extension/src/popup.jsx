@@ -20,15 +20,13 @@ function App() {
   const [error, setError] = useState("");
   const [isRegister, setIsRegister] = useState(false);
 
-  const [jobTitle, setJobTitle] = useState("");
-  const [jobDesc, setJobDesc] = useState("");
   const [jobs, setJobs] = useState([]);
-  const [jobMsg, setJobMsg] = useState("");
 
   const [activeTab, setActiveTab] = useState("jobs");
   const [shortlistJobId, setShortlistJobId] = useState("");
   const [shortlistCandidates, setShortlistCandidates] = useState([]);
   const [shortlistLoading, setShortlistLoading] = useState(false);
+  const [country, setCountry] = useState("IN");
 
   useEffect(() => {
     checkAuth();
@@ -44,6 +42,7 @@ function App() {
       const me = await api.getMe();
       setUserEmail(me.email);
       setCredits(me.credits);
+      setCountry(me.country || "IN");
       const jobList = await api.getJobs();
       setJobs(jobList);
       if (jobList.length > 0) setShortlistJobId(jobList[0].id.toString());
@@ -64,6 +63,7 @@ function App() {
       await setAuth(data.token, data.email);
       setUserEmail(data.email);
       setCredits(data.credits);
+      setCountry(data.country || "IN");
       const jobList = await api.getJobs();
       setJobs(jobList);
       setView("dashboard");
@@ -79,21 +79,8 @@ function App() {
     setPassword("");
   }
 
-  async function handleAddJob(e) {
-    e.preventDefault();
-    setJobMsg("");
-    setError("");
-    try {
-      const job = await api.createJob(jobTitle, jobDesc);
-      const updated = [job, ...jobs];
-      setJobs(updated);
-      if (updated.length === 1) setShortlistJobId(job.id.toString());
-      setJobTitle("");
-      setJobDesc("");
-      setJobMsg("Job added!");
-    } catch (err) {
-      setError(err.message);
-    }
+  function openJobsPage() {
+    chrome.tabs.create({ url: chrome.runtime.getURL("jobs.html") });
   }
 
   async function handleLoadShortlist(jobId) {
@@ -152,6 +139,12 @@ function App() {
         <p style={s.toggle} onClick={() => { setIsRegister(!isRegister); setError(""); }}>
           {isRegister ? "Already have an account? Log in" : "New here? Register"}
         </p>
+        <p style={{ fontSize: "11px", color: COLORS.textLight, textAlign: "center", marginTop: "12px" }}>
+          By continuing, you agree to our{" "}
+          <span style={{ color: COLORS.primary, cursor: "pointer", textDecoration: "underline" }} onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL("legal.html") })}>
+            Terms & Privacy
+          </span>
+        </p>
       </div>
     );
   }
@@ -160,13 +153,25 @@ function App() {
     <div style={s.container}>
       <div style={s.header}>
         <h2 style={{ ...s.logo, fontSize: "16px" }}>SourceFlow</h2>
-        <button onClick={handleLogout} style={s.linkBtn}>Logout</button>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <span style={{ ...s.linkBtn, fontSize: "11px" }} onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL("legal.html") })}>Legal</span>
+          <button onClick={handleLogout} style={s.linkBtn}>Logout</button>
+        </div>
       </div>
 
       <div style={s.infoRow}>
         <span style={{ fontSize: "13px", color: COLORS.textLight }}>{userEmail}</span>
-        <span style={s.creditBadge}>{credits} credits</span>
+        <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={s.creditBadge}>{credits} credits</span>
+          <button
+            onClick={() => chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country })}
+            style={{ fontSize: "11px", padding: "2px 8px", backgroundColor: COLORS.primary, color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}
+          >
+            Get Credits
+          </button>
+        </span>
       </div>
+
 
       <div style={s.tabs}>
         <button
@@ -186,33 +191,29 @@ function App() {
       {activeTab === "jobs" && (
         <>
           <div style={s.section}>
-            <h3 style={s.sectionTitle}>Add Job Description</h3>
-            <form onSubmit={handleAddJob}>
-              <input
-                style={s.input}
-                type="text"
-                placeholder="Job title"
-                value={jobTitle}
-                onChange={(e) => setJobTitle(e.target.value)}
-                required
-              />
-              <textarea
-                style={{ ...s.input, minHeight: "80px", resize: "vertical" }}
-                placeholder="Paste full job description..."
-                value={jobDesc}
-                onChange={(e) => setJobDesc(e.target.value)}
-                required
-              />
-              <button type="submit" style={{ ...s.button, fontSize: "13px", padding: "8px" }}>
-                Add Job
-              </button>
-            </form>
-            {jobMsg && <p style={{ color: "#057642", fontSize: "12px", marginTop: "6px" }}>{jobMsg}</p>}
+            <h3 style={s.sectionTitle}>Jobs</h3>
+            <button
+              onClick={openJobsPage}
+              style={{ ...s.button, fontSize: "13px", padding: "10px" }}
+            >
+              Add Jobs
+            </button>
+            <p style={{ fontSize: "11px", color: COLORS.textLight, marginTop: "8px" }}>
+              Opens a page where you can add multiple job descriptions.
+            </p>
           </div>
 
           {jobs.length > 0 && (
             <div style={s.section}>
-              <h3 style={s.sectionTitle}>Your Jobs ({jobs.length})</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <h3 style={s.sectionTitle}>Your Jobs ({jobs.length})</h3>
+                <button
+                  onClick={async () => { try { const list = await api.getJobs(); setJobs(list); } catch {} }}
+                  style={s.linkBtn}
+                >
+                  Refresh
+                </button>
+              </div>
               {jobs.map((j) => (
                 <div key={j.id} style={s.jobItem}>
                   <span style={{ fontWeight: "500" }}>{j.title}</span>
