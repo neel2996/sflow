@@ -13,26 +13,20 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(8080);
 });
 
-// Database: PostgreSQL via DATABASE_URL or ConnectionStrings:DefaultConnection
-// Format: postgresql://USER:PASSWORD@HOST:5432/DB_NAME (postgres:// also supported)
-var connStr = Environment.GetEnvironmentVariable("DATABASE_URL")
-    ?? builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrEmpty(connStr))
-    throw new InvalidOperationException("DATABASE_URL or ConnectionStrings:DefaultConnection must be set for PostgreSQL.");
-// Heroku/Render use postgres:// - Npgsql accepts both
-if (connStr.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase))
-    connStr = "postgresql://" + connStr["postgres://".Length..];
-
+// Controllers & health checks
+builder.Services.AddControllers();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("postgres");
-builder.Services.AddControllers();
 
+// PostgreSQL (Neon) — ONLY using ConnectionStrings:DefaultConnection
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connStr + ";SSL Mode=Require;Trust Server Certificate=true", npgsql =>
-    {
-        npgsql.EnableRetryOnFailure(3);
-        npgsql.CommandTimeout(30);
-    }));
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsql =>
+        {
+            npgsql.EnableRetryOnFailure(3);
+            npgsql.CommandTimeout(30);
+        }));
 
 // JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -72,7 +66,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -89,6 +82,7 @@ app.MapHealthChecks("/health");
 app.MapGet("/success", () => Results.Content(
     "<!DOCTYPE html><html><head><title>Payment Complete</title></head><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>Payment complete!</h1><p>You can close this tab and return to SourceFlow.</p></body></html>",
     "text/html"));
+
 app.MapGet("/cancel", () => Results.Content(
     "<!DOCTYPE html><html><head><title>Cancelled</title></head><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>Payment cancelled</h1><p>You can close this tab.</p></body></html>",
     "text/html"));
@@ -98,6 +92,7 @@ app.MapGet("/paywall", (IWebHostEnvironment env) =>
     var path = Path.Combine(env.ContentRootPath, "wwwroot", "paywall.html");
     return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
 });
+
 app.MapGet("/legal", (IWebHostEnvironment env) =>
 {
     var path = Path.Combine(env.ContentRootPath, "wwwroot", "legal.html");
@@ -107,13 +102,16 @@ app.MapGet("/legal", (IWebHostEnvironment env) =>
 // Controllers
 app.MapControllers();
 
-
 // Auto run migrations + seed plans
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-    await SeedPlansAsync(db);
+
+    if (db.Database.CanConnect())
+    {
+        db.Database.Migrate();
+        await SeedPlansAsync(db);
+    }
 }
 
 app.Run();
@@ -128,11 +126,13 @@ static async Task SeedPlansAsync(AppDbContext db)
         new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 99, Currency = "INR", Credits = 50, BillingType = "one_time", Provider = "razorpay" },
         new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 199, Currency = "INR", Credits = 150, BillingType = "one_time", Provider = "razorpay" },
         new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 999, Currency = "INR", Credits = 1000, BillingType = "one_time", Provider = "razorpay" },
+
         // Global — subscription (USD, Paddle)
         new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 9, Currency = "USD", Credits = 200, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_starter" },
         new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 19, Currency = "USD", Credits = 600, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_growth" },
         new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 49, Currency = "USD", Credits = 2000, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_pro" },
     };
+
     db.Plans.AddRange(plans);
     await db.SaveChangesAsync();
 }
