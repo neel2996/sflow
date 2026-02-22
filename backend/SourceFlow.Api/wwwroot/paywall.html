@@ -40,13 +40,12 @@
   <script>
     const params = new URLSearchParams(location.search);
     const token = params.get("token");
-    const country = params.get("country") || "IN";
-    const isIndia = country.toUpperCase() === "IN";
+    const urlCountry = params.get("country") || "IN";
+    let country = urlCountry;
+    let isIndia = country.toUpperCase() === "IN";
     let lastPurchased = null; // { planId, paymentId }
 
     const API_BASE = location.origin;
-
-    document.getElementById("subtitle").textContent = isIndia ? "One-time credit packs (INR)" : "Subscription plans (USD)";
 
     async function api(method, path, body) {
       const opts = { method, headers: { "Content-Type": "application/json" } };
@@ -71,10 +70,21 @@
       }
 
       try {
+        // Use backend as source of truth for country (from Users table)
+        const me = await api("GET", "/user/me");
+        if (me && me.country) {
+          country = String(me.country).trim();
+          isIndia = country.toUpperCase() === "IN" || country.toUpperCase() === "INDIA";
+        }
+
         const [plans, config] = await Promise.all([
-          api("GET", "/payments/plans?country=" + country),
+          api("GET", "/payments/plans?country=" + encodeURIComponent(country)),
           api("GET", "/payments/client-config")
         ]);
+
+        // Set subtitle from actual plans (not assumed) so it always matches
+        const planCurrency = plans && plans[0] ? plans[0].currency : (isIndia ? "INR" : "USD");
+        document.getElementById("subtitle").textContent = planCurrency === "INR" ? "One-time credit packs (INR)" : "Subscription plans (USD)";
 
         document.getElementById("loading").style.display = "none";
 

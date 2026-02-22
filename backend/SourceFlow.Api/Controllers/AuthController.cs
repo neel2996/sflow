@@ -33,12 +33,21 @@ public class AuthController : ControllerBase
         {
             Email = req.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            CreditsBalance = 20,
+            CreditsBalance = 50,
             Country = req.Country ?? "IN",
             CreatedAt = DateTime.UtcNow
         };
 
         _db.Users.Add(user);
+        await _db.SaveChangesAsync();
+
+        _db.CreditTransactions.Add(new CreditTransaction
+        {
+            UserId = user.Id,
+            CreditsChanged = 50,
+            Type = "signup_bonus",
+            CreatedAt = DateTime.UtcNow
+        });
         await _db.SaveChangesAsync();
 
         return Ok(new AuthResponse

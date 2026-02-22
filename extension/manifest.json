@@ -1,1 +1,42 @@
-{"manifest_version":3,"name":"SourceFlow","version":"1.0.0","description":"Scan LinkedIn profiles against job descriptions for recruiter insights.","permissions":["storage","tabs"],"host_permissions":["https://www.linkedin.com/*","http://localhost:5000/*","http://localhost:8080/*","https://*.onrender.com/*","https://checkout.razorpay.com/*","https://api.razorpay.com/*"],"background":{"service_worker":"background.js"},"action":{"default_popup":"popup.html","default_title":"SourceFlow"},"content_scripts":[{"matches":["https://www.linkedin.com/in/*"],"js":["dist/content.js"],"run_at":"document_idle"}]}
+{
+    "manifest_version": 3,
+    "name": "SourceFlow",
+    "version": "1.0.0",
+    "description": "AI recruiter assistant to analyze LinkedIn profiles, match candidates to jobs, and generate outreach.",
+  
+    "permissions": [
+      "storage",
+      "tabs",
+      "activeTab"
+    ],
+  
+    "host_permissions": [
+      "https://www.linkedin.com/*",
+      "https://sflow-5diw.onrender.com/*",
+      "https://checkout.razorpay.com/*",
+      "https://api.razorpay.com/*"
+    ],
+  
+    "background": {
+      "service_worker": "background.js"
+    },
+  
+    "action": {
+      "default_popup": "popup.html",
+      "default_title": "SourceFlow"
+    },
+  
+    "icons": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+  
+    "content_scripts": [
+      {
+        "matches": ["https://www.linkedin.com/in/*"],
+        "js": ["dist/content.js"],
+        "run_at": "document_idle"
+      }
+    ]
+  }

@@ -78,6 +78,13 @@ app.UseAuthorization();
 // Health check
 app.MapHealthChecks("/health");
 
+// Landing page (Razorpay verification, product info)
+app.MapGet("/", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "wwwroot", "index.html");
+    return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
+});
+
 // Payment redirect pages
 app.MapGet("/success", () => Results.Content(
     "<!DOCTYPE html><html><head><title>Payment Complete</title></head><body style='font-family:sans-serif;text-align:center;padding:40px'><h1>Payment complete!</h1><p>You can close this tab and return to SourceFlow.</p></body></html>",

@@ -45,11 +45,13 @@ function request(method, path, body) {
 }
 
 export const api = {
-  register: (email, password) =>
-    request("POST", "/auth/register", { email, password }),
+  register: (email, password, country = "IN") =>
+    request("POST", "/auth/register", { email, password, country }),
   login: (email, password) =>
     request("POST", "/auth/login", { email, password }),
   getMe: () => request("GET", "/user/me"),
+  updateCountry: (country) =>
+    request("PATCH", "/user/me", { country }),
   getJobs: () => request("GET", "/jobs"),
   createJob: (title, description) =>
     request("POST", "/jobs", { title, description }),

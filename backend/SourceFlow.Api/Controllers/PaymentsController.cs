@@ -84,8 +84,24 @@ public class PaymentsController : ControllerBase
     public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest req)
     {
         var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
         var plan = await _db.Plans.FindAsync(req.PlanId);
         if (plan == null) return BadRequest(new { error = "Invalid plan" });
+
+        var isIndia = string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(plan.Provider, "razorpay", StringComparison.OrdinalIgnoreCase) && !isIndia)
+            return BadRequest(new { error = "International payments are temporarily unavailable." });
+        if (string.Equals(plan.Provider, "paddle", StringComparison.OrdinalIgnoreCase) && isIndia)
+            return BadRequest(new { error = "Indian users must use INR plans. Switch to India (IN) or use the INR pricing." });
+
+        if (string.Equals(plan.Provider, "paddle", StringComparison.OrdinalIgnoreCase))
+        {
+            var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            if (string.IsNullOrEmpty(config["Paddle:ApiKey"]))
+                return BadRequest(new { error = "International payments not accepted yet." });
+        }
 
         try
         {
@@ -104,8 +120,6 @@ public class PaymentsController : ControllerBase
 
             if (string.Equals(plan.Provider, "paddle", StringComparison.OrdinalIgnoreCase))
             {
-                var user = await _db.Users.FindAsync(userId);
-                if (user == null) return NotFound();
                 var returnUrl = $"{Request.Scheme}://{Request.Host}/success";
                 var checkoutUrl = await _paddle.CreateCheckoutUrlAsync(userId, req.PlanId, user.Email, returnUrl);
                 return Ok(new CreateOrderResponse
@@ -137,6 +151,12 @@ public class PaymentsController : ControllerBase
     public async Task<IActionResult> CreateRazorpayOrder([FromBody] CreateRazorpayOrderRequest req)
     {
         var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+        var isIndia = string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase);
+        if (!isIndia)
+            return BadRequest(new { error = "International payments are temporarily unavailable." });
+
         var plan = await _db.Plans.FindAsync(req.PlanId);
         if (plan == null || !string.Equals(plan.Provider, "razorpay", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "Invalid or non-Razorpay plan" });
@@ -165,11 +185,13 @@ public class PaymentsController : ControllerBase
             return NotFound();
 
         var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
-        var plan = await _db.Plans.FirstOrDefaultAsync(p => p.Id == req.PlanId && p.Provider == "razorpay");
-        if (plan == null) return BadRequest(new { error = "Invalid plan" });
-
         var user = await _db.Users.FindAsync(userId);
         if (user == null) return NotFound();
+        var isIndia = string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase);
+        if (!isIndia)
+            return BadRequest(new { error = "International payments are temporarily unavailable." });
+        var plan = await _db.Plans.FirstOrDefaultAsync(p => p.Id == req.PlanId && p.Provider == "razorpay");
+        if (plan == null) return BadRequest(new { error = "Invalid plan" });
 
         await AddCreditsAndRecordPayment(userId, plan, "mock");
         return Ok(new { credits_added = plan.Credits, message = "Mock payment successful" });
@@ -314,6 +336,10 @@ public class PaymentsController : ControllerBase
             return NotFound();
 
         var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+        if (!string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "International payments are temporarily unavailable." });
         // Use client-provided payment_id for idempotency so each purchase gets unique credits
         var orderId = !string.IsNullOrWhiteSpace(req.PaymentId) ? req.PaymentId : $"sim_{userId}_{req.PlanId}";
 
@@ -322,8 +348,7 @@ public class PaymentsController : ControllerBase
             .FirstOrDefaultAsync(p => (p.ExternalPaymentId == orderId || p.RazorpayOrderId == orderId) && p.Status == "Completed");
         if (existing != null)
         {
-            var user = await _db.Users.FindAsync(userId);
-            return Ok(new { credits_added = 0, new_balance = user?.CreditsBalance ?? 0, message = "Already verified" });
+            return Ok(new { credits_added = 0, new_balance = user.CreditsBalance, message = "Already verified" });
         }
 
         var plan = await _db.Plans.FirstOrDefaultAsync(p => p.Id == req.PlanId && (p.Provider == "razorpay" || p.Provider == "Razorpay"));

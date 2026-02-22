@@ -47,14 +47,14 @@ public class PaddleService
         if (string.IsNullOrEmpty(priceId))
         {
             _logger.LogError("Plan {PlanId} has no PaddlePriceId", planId);
-            throw new InvalidOperationException("Paddle price not configured for this plan");
+            throw new InvalidOperationException("International payments not accepted yet.");
         }
 
         var apiKey = _config["Paddle:ApiKey"];
         if (string.IsNullOrEmpty(apiKey))
         {
             _logger.LogError("Paddle API key not configured");
-            throw new InvalidOperationException("Paddle not configured");
+            throw new InvalidOperationException("International payments not accepted yet.");
         }
 
         var user = await _db.Users.FindAsync(userId);

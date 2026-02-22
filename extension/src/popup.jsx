@@ -27,6 +27,7 @@ function App() {
   const [shortlistCandidates, setShortlistCandidates] = useState([]);
   const [shortlistLoading, setShortlistLoading] = useState(false);
   const [country, setCountry] = useState("IN");
+  const [registerCountry, setRegisterCountry] = useState("IN");
 
   useEffect(() => {
     checkAuth();
@@ -58,7 +59,7 @@ function App() {
     setError("");
     try {
       const data = isRegister
-        ? await api.register(email, password)
+        ? await api.register(email, password, registerCountry)
         : await api.login(email, password);
       await setAuth(data.token, data.email);
       setUserEmail(data.email);
@@ -131,6 +132,18 @@ function App() {
             required
             minLength={6}
           />
+          {isRegister && (
+            <select
+              style={s.input}
+              value={registerCountry}
+              onChange={(e) => setRegisterCountry(e.target.value)}
+              title="Country affects payment options (India: INR/Razorpay, Other: USD/Paddle)"
+            >
+              <option value="IN">India (INR)</option>
+              <option value="US">United States (USD)</option>
+              <option value="OTHER">Other (USD)</option>
+            </select>
+          )}
           <button type="submit" style={s.button}>
             {isRegister ? "Register" : "Log In"}
           </button>
@@ -164,12 +177,41 @@ function App() {
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={s.creditBadge}>{credits} credits</span>
           <button
-            onClick={() => chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country })}
+            onClick={async () => {
+              try {
+                const me = await api.getMe();
+                const c = me?.country || country || "IN";
+                setCountry(c);
+                chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country: c });
+              } catch {
+                chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country });
+              }
+            }}
             style={{ fontSize: "11px", padding: "2px 8px", backgroundColor: COLORS.primary, color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}
           >
             Get Credits
           </button>
         </span>
+      </div>
+      <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "12px", color: COLORS.textLight }}>Region:</span>
+        <select
+          style={{ ...s.input, marginBottom: 0, padding: "6px 10px", fontSize: "12px", width: "auto" }}
+          value={country === "OTHER" || country === "USA" ? "US" : country}
+          onChange={async (e) => {
+            const v = e.target.value;
+            try {
+              await api.updateCountry(v);
+              setCountry(v);
+            } catch (err) {
+              setError(err.message);
+            }
+          }}
+          title="Affects payment options (India: INR, Other: USD)"
+        >
+          <option value="IN">India (INR)</option>
+          <option value="US">USA / Other (USD)</option>
+        </select>
       </div>
 
 

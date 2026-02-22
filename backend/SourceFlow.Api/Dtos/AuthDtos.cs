@@ -29,3 +29,8 @@ public class AuthResponse
     public int Credits { get; set; }
     public string Country { get; set; } = "IN";
 }
+
+public class UpdateCountryRequest
+{
+    public string? Country { get; set; }
+}
