@@ -326,6 +326,45 @@ public class PaymentsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Verify Razorpay payment after checkout (production). Adds credits if not already processed by webhook.
+    /// </summary>
+    [HttpPost("verify-razorpay")]
+    [Authorize]
+    public async Task<IActionResult> VerifyRazorpayPayment([FromBody] VerifyRazorpayRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.OrderId) || string.IsNullOrWhiteSpace(req.PaymentId))
+            return BadRequest(new { error = "order_id and payment_id required" });
+
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
+        var existing = await _db.Payments
+            .FirstOrDefaultAsync(p => (p.ExternalPaymentId == req.OrderId || p.RazorpayOrderId == req.OrderId) && p.Status == "Completed");
+        if (existing != null)
+        {
+            var balance = (await _db.Users.FindAsync(userId))?.CreditsBalance ?? 0;
+            return Ok(new { credits_added = 0, new_balance = balance, message = "Already verified" });
+        }
+
+        var notes = await _razorpay.GetOrderNotesAsync(req.OrderId);
+        if (notes == null || !notes.TryGetValue("user_id", out var uid) || !notes.TryGetValue("plan_id", out var pid)
+            || uid != userId.ToString() || !int.TryParse(pid, out var planId))
+        {
+            _logger.LogWarning("VerifyRazorpay: Order {OrderId} notes mismatch or invalid", req.OrderId);
+            return BadRequest(new { error = "Invalid order" });
+        }
+
+        var plan = await _db.Plans.FindAsync(planId);
+        if (plan == null || plan.Provider?.ToLower() != "razorpay")
+            return BadRequest(new { error = "Invalid plan" });
+
+        await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: req.OrderId, razorpayOrderId: req.OrderId, razorpayPaymentId: req.PaymentId);
+        var freshUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        return Ok(new { credits_added = plan.Credits, new_balance = freshUser?.CreditsBalance ?? 0, message = "Credits added" });
+    }
+
     [HttpPost("simulate-razorpay-webhook")]
     [Authorize]
     public async Task<IActionResult> SimulateRazorpayWebhook([FromBody] SimulateWebhookRequest req)

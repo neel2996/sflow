@@ -30,6 +30,10 @@
   <div id="loading" class="loading">Loading plans...</div>
   <p id="error" class="error" style="display:none"></p>
   <div id="plans" class="plans" style="display:none"></div>
+  <div id="success-section" style="display:none; margin-top:20px; padding:16px; border:1px solid #057642; border-radius:8px; background:#f0f9f0;">
+    <p style="margin:0; font-weight:600; color:#057642; font-size:16px;">Credits purchased!</p>
+    <p style="margin:8px 0 0; font-size:13px; color:#666;">You can close this tab and return to the extension.</p>
+  </div>
   <div id="verify-section" style="display:none; margin-top:20px; padding:16px; border:1px solid #057642; border-radius:8px; background:#f0f9f0;">
     <p style="margin:0 0 12px; font-weight:600; color:#057642;">Razorpay payment completed?</p>
     <p style="margin:0 0 12px; font-size:13px; color:#666;">Webhooks can't reach localhost. Click Verify to simulate the webhook and add credits.</p>
@@ -43,7 +47,8 @@
     const urlCountry = params.get("country") || "IN";
     let country = urlCountry;
     let isIndia = country.toUpperCase() === "IN";
-    let lastPurchased = null; // { planId, paymentId }
+    let lastPurchased = null; // { planId } for localhost simulate
+    const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 
     const API_BASE = location.origin;
 
@@ -144,14 +149,29 @@
         }
         if (res.order_id || res.orderId) {
           if (!razorpayKey && !res.key) throw new Error("Razorpay not configured");
+          const orderId = res.order_id || res.orderId;
           const rzp = new Razorpay({
             key: res.key || razorpayKey,
-            order_id: res.order_id || res.orderId,
+            order_id: orderId,
             name: "SourceFlow",
             description: plan.name + " - " + plan.credits + " credits",
-            handler: () => {
-              lastPurchased = { planId: plan.id, paymentId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'sim_' + Date.now() + '_' + Math.random().toString(36).slice(2) };
-              document.getElementById("verify-section").style.display = "block";
+            handler: async (response) => {
+              if (isLocalhost) {
+                lastPurchased = { planId: plan.id, paymentId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'sim_' + Date.now() + '_' + Math.random().toString(36).slice(2) };
+                document.getElementById("verify-section").style.display = "block";
+              } else {
+                try {
+                  const verifyRes = await api("POST", "/payments/verify-razorpay", {
+                    order_id: response.razorpay_order_id,
+                    payment_id: response.razorpay_payment_id
+                  });
+                  document.getElementById("plans").style.display = "none";
+                  document.getElementById("success-section").style.display = "block";
+                } catch (err) {
+                  document.getElementById("error").textContent = err.message || "Failed to verify payment. Credits may still be added via webhook.";
+                  document.getElementById("error").style.display = "block";
+                }
+              }
             }
           });
           rzp.open();

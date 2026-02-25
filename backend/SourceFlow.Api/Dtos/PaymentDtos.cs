@@ -45,6 +45,15 @@ public class SimulateWebhookRequest
     public string? PaymentId { get; set; }
 }
 
+public class VerifyRazorpayRequest
+{
+    [JsonPropertyName("order_id")]
+    public string OrderId { get; set; } = string.Empty;
+
+    [JsonPropertyName("payment_id")]
+    public string PaymentId { get; set; } = string.Empty;
+}
+
 public class PlanResponse
 {
     [JsonPropertyName("id")]
