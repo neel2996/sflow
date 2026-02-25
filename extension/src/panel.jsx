@@ -308,8 +308,11 @@ export default function Panel() {
       const jobList = await api.getJobs();
       setJobs(jobList);
       if (jobList.length > 0) setSelectedJob(jobList[0].id.toString());
-    } catch {
+    } catch (err) {
       setAuthed(false);
+      if (err?.statusCode === 401) {
+        setError("Your session has expired. Please open the extension and log in again.");
+      }
     }
   }
 
@@ -413,7 +416,7 @@ export default function Panel() {
       {!authed ? (
         <div style={styles.notAuth}>
           <p style={{ marginBottom: "8px", fontWeight: "600" }}>Not logged in</p>
-          <p style={{ fontSize: "13px" }}>Click the SourceFlow icon to log in, then refresh this page.</p>
+          <p style={{ fontSize: "13px" }}>{error || "Click the SourceFlow icon to log in, then refresh this page."}</p>
         </div>
       ) : (
         <div style={styles.body}>

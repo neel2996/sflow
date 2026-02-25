@@ -50,6 +50,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 // Services
 builder.Services.AddScoped<AiService>();
+builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<CreditService>();
 builder.Services.AddScoped<CacheService>();
 builder.Services.AddScoped<RazorpayService>();
@@ -106,6 +107,12 @@ app.MapGet("/paywall", (IWebHostEnvironment env) =>
 app.MapGet("/legal", (IWebHostEnvironment env) =>
 {
     var path = Path.Combine(env.ContentRootPath, "wwwroot", "legal.html");
+    return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
+});
+
+app.MapGet("/reset-password", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "wwwroot", "reset-password.html");
     return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
 });
 

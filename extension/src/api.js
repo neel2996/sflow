@@ -49,6 +49,8 @@ export const api = {
     request("POST", "/auth/register", { email, password, country }),
   login: (email, password) =>
     request("POST", "/auth/login", { email, password }),
+  forgotPassword: (email) =>
+    request("POST", "/auth/forgot-password", { email }),
   getMe: () => request("GET", "/user/me"),
   updateCountry: (country) =>
     request("PATCH", "/user/me", { country }),

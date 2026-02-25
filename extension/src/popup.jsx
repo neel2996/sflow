@@ -19,6 +19,9 @@ function App() {
   const [userEmail, setUserEmail] = useState("");
   const [error, setError] = useState("");
   const [isRegister, setIsRegister] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
 
   const [jobs, setJobs] = useState([]);
 
@@ -56,9 +59,10 @@ function App() {
       setJobs(jobList);
       if (jobList.length > 0) setShortlistJobId(jobList[0].id.toString());
       setView("dashboard");
-    } catch {
+    } catch (err) {
       await clearAuth();
       setView("auth");
+      setError(err?.statusCode === 401 ? "Your session has expired. Please log in again." : "");
     }
   }
 
@@ -77,7 +81,11 @@ function App() {
       setJobs(jobList);
       setView("dashboard");
     } catch (err) {
-      setError(err.message);
+      if (err?.statusCode === 401) {
+        setError("Your session has expired. Please log in again.");
+      } else {
+        setError(err.message);
+      }
     }
   }
 
@@ -100,7 +108,13 @@ function App() {
       const candidates = await api.getShortlist(parseInt(jobId));
       setShortlistCandidates(candidates);
     } catch (err) {
-      setError(err.message);
+      if (err?.statusCode === 401) {
+        await clearAuth();
+        setView("auth");
+        setError("Your session has expired. Please log in again.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setShortlistLoading(false);
     }
@@ -129,7 +143,13 @@ function App() {
       setFeedbackToast(true);
       setTimeout(() => setFeedbackToast(false), 4000);
     } catch (err) {
-      setError(err.message);
+      if (err?.statusCode === 401) {
+        await clearAuth();
+        setView("auth");
+        setError("Your session has expired. Please log in again.");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setFeedbackSubmitting(false);
     }
@@ -139,7 +159,52 @@ function App() {
     return <div style={s.container}><p style={{ textAlign: "center", padding: "20px" }}>Loading...</p></div>;
   }
 
+  async function handleForgotPassword(e) {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setError("");
+    try {
+      await api.forgotPassword(forgotEmail.trim());
+      setForgotSent(true);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
   if (view === "auth") {
+    if (showForgotPassword) {
+      return (
+        <div style={s.container}>
+          <h2 style={s.logo}>Forgot Password</h2>
+          {forgotSent ? (
+            <>
+              <p style={{ fontSize: "13px", color: COLORS.textLight, textAlign: "center" }}>
+                If that email exists, we've sent a reset link. Check your inbox.
+              </p>
+              <p style={{ ...s.toggle, marginTop: "16px" }} onClick={() => { setShowForgotPassword(false); setForgotSent(false); setError(""); }}>
+                ← Back to login
+              </p>
+            </>
+          ) : (
+            <form onSubmit={handleForgotPassword}>
+              <input
+                style={s.input}
+                type="email"
+                placeholder="Your email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                required
+              />
+              <button type="submit" style={s.button}>Send reset link</button>
+              {error && <p style={s.error}>{error}</p>}
+              <p style={{ ...s.toggle, marginTop: "12px" }} onClick={() => { setShowForgotPassword(false); setError(""); }}>
+                ← Back to login
+              </p>
+            </form>
+          )}
+        </div>
+      );
+    }
     return (
       <div style={s.container}>
         <h2 style={s.logo}>SourceFlow</h2>
@@ -181,6 +246,11 @@ function App() {
         <p style={s.toggle} onClick={() => { setIsRegister(!isRegister); setError(""); }}>
           {isRegister ? "Already have an account? Log in" : "New here? Register"}
         </p>
+        {!isRegister && (
+          <p style={{ ...s.toggle, marginTop: "4px", fontSize: "11px" }} onClick={() => setShowForgotPassword(true)}>
+            Forgot password?
+          </p>
+        )}
         <p style={{ fontSize: "11px", color: COLORS.textLight, textAlign: "center", marginTop: "8px" }}>
           <span style={{ color: COLORS.primary, cursor: "pointer", textDecoration: "underline" }} onClick={() => { setFeedbackEmail(""); setFeedbackOpen(true); }}>
             Send Feedback
@@ -275,7 +345,13 @@ function App() {
               await api.updateCountry(v);
               setCountry(v);
             } catch (err) {
-              setError(err.message);
+              if (err?.statusCode === 401) {
+                await clearAuth();
+                setView("auth");
+                setError("Your session has expired. Please log in again.");
+              } else {
+                setError(err.message);
+              }
             }
           }}
           title="Affects payment options (India: INR, Other: USD)"

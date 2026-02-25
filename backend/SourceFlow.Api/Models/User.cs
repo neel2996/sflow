@@ -11,6 +11,8 @@ public class User
     public string? PaddleCustomerId { get; set; }
     public string Country { get; set; } = "IN";
     public DateTime CreatedAt { get; set; }
+    public string? PasswordResetToken { get; set; }
+    public DateTime? PasswordResetExpiry { get; set; }
 
     public ICollection<Job> Jobs { get; set; } = new List<Job>();
     public ICollection<CreditTransaction> CreditTransactions { get; set; } = new List<CreditTransaction>();
