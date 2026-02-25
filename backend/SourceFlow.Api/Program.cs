@@ -18,10 +18,13 @@ builder.Services.AddControllers();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("postgres");
 
-// PostgreSQL (Neon) — ONLY using ConnectionStrings:DefaultConnection
+// PostgreSQL — use DefaultConnection or DATABASE_URL (Render)
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? builder.Configuration["DATABASE_URL"]?.Replace("postgres://", "postgresql://")
+    ?? throw new InvalidOperationException("Set ConnectionStrings:DefaultConnection or DATABASE_URL");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
+        connStr,
         npgsql =>
         {
             npgsql.EnableRetryOnFailure(3);
