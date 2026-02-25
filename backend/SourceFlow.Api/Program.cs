@@ -140,6 +140,7 @@ static async Task SeedPlansAsync(AppDbContext db)
     var plans = new[]
     {
         // India — one-time credit packs (Razorpay)
+        new SourceFlow.Api.Models.Plan { Name = "Test (₹2)", Price = 2, Currency = "INR", Credits = 2, BillingType = "one_time", Provider = "razorpay" },
         new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 99, Currency = "INR", Credits = 50, BillingType = "one_time", Provider = "razorpay" },
         new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 199, Currency = "INR", Credits = 150, BillingType = "one_time", Provider = "razorpay" },
         new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 999, Currency = "INR", Credits = 1000, BillingType = "one_time", Provider = "razorpay" },
