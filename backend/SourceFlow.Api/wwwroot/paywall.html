@@ -14,7 +14,7 @@
     .loading { text-align: center; color: #666; }
     .error { color: #b24020; font-size: 13px; margin-bottom: 12px; }
     .plans { display: flex; flex-direction: column; gap: 12px; }
-    .plan-card { padding: 16px; border: 1px solid #e0e0e0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .plan-card { padding: 16px; border: 1px solid #e0e0e0; border-radius: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
     .plan-name { font-weight: 600; font-size: 16px; }
     .plan-credits { font-size: 13px; color: #666; margin-top: 4px; }
     .buy-btn { padding: 10px 20px; background: #0073b1; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
@@ -119,16 +119,20 @@
           else if (isCustom) desc = "1 credit = ₹1 – enter number below";
           else desc = p.credits + " credits" + ((p.billing_type === "subscription" || p.billing_type === "Monthly") ? " / month" : "");
 
-          const customInput = isCustom ? `<input type="number" min="1" max="10000" placeholder="Enter credits" id="custom-credits-${i}" class="custom-credits-input" data-index="${i}" style="width:80px;padding:8px;margin-right:8px;border:1px solid #e0e0e0;border-radius:6px;font-size:14px;" />` : "";
+          const customInput = isCustom ? `
+            <div style="margin-top:10px;margin-bottom:8px;">
+              <label style="display:block;font-size:12px;color:#666;margin-bottom:4px;">Number of credits (1 credit = ₹1):</label>
+              <input type="number" min="1" max="10000" placeholder="e.g. 50" id="custom-credits-${i}" class="custom-credits-input" data-index="${i}" style="width:100%;max-width:120px;padding:10px 12px;border:1px solid #0073b1;border-radius:6px;font-size:16px;box-sizing:border-box;" />
+            </div>
+          ` : "";
           const buyBtnDisabled = isCustom ? " disabled" : "";
           div.innerHTML = `
-            <div>
+            <div style="flex:1;">
               <div class="plan-name">${escapeHtml(p.name)}</div>
               <div class="plan-credits">${desc}</div>
-              ${isCustom ? "<div style='font-size:12px;color:#666;margin-top:6px'>1 credit = ₹1. Enter number of credits to buy.</div>" : ""}
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
               ${customInput}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
               ${mockEnabled && p.provider === "razorpay" ? `<button class="buy-btn mock-btn" data-index="${i}"${buyBtnDisabled}>Test (mock)</button>` : ""}
               <button class="buy-btn buy-btn-main" data-index="${i}"${buyBtnDisabled}>${isIndia ? "Buy" : "Subscribe"}</button>
             </div>
