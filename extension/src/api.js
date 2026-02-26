@@ -76,8 +76,8 @@ export const api = {
   getShortlist: (jobId) => request("GET", `/shortlist/${jobId}`),
   getClientConfig: () => request("GET", "/payments/client-config"),
   getPlans: (country) => request("GET", `/payments/plans?country=${country || "IN"}`),
-  createOrder: (planId) =>
-    request("POST", "/payments/create-order", { plan_id: planId }),
+  createOrder: (planId, credits) =>
+    request("POST", "/payments/create-order", { plan_id: planId, credits: credits || undefined }),
   createRazorpayOrder: (planId) =>
     request("POST", "/payments/create-razorpay-order", { plan_id: planId }),
   submitFeedback: (email, message, type) =>

@@ -63,11 +63,19 @@ public class PaymentsController : ControllerBase
                     Currency = p.Currency,
                     Credits = p.Credits,
                     BillingType = p.BillingType,
-                    Provider = p.Provider
+                    Provider = p.Provider,
+                    PlanType = p.PlanType ?? "credit_pack",
+                    DurationHours = p.DurationHours,
+                    IsCustom = p.IsCustom
                 })
                 .ToListAsync();
 
-            return Ok(plans.OrderBy(p => p.Price).ToList());
+            // Order: Starter, Growth, Pro first (by price), then Custom Credits last
+            var isCustom = (PlanResponse p) => (p.PlanType ?? "").ToLower() == "custom" || p.IsCustom || (p.Price == 0 && p.Credits == 0 && (p.Name ?? "").Contains("Custom", StringComparison.OrdinalIgnoreCase));
+            return Ok(plans
+                .OrderBy(p => isCustom(p) ? 1 : 0)
+                .ThenBy(p => p.Price)
+                .ToList());
         }
         catch (Exception ex)
         {
@@ -89,6 +97,28 @@ public class PaymentsController : ControllerBase
 
         var plan = await _db.Plans.FindAsync(req.PlanId);
         if (plan == null) return BadRequest(new { error = "Invalid plan" });
+
+        // Custom plan: require credits, price = credits * 1 INR
+        if (plan.IsCustom || (plan.PlanType ?? "").ToLower() == "custom")
+        {
+            var credits = req.Credits ?? 0;
+            if (credits < 1 || credits > 10000)
+                return BadRequest(new { error = "Credits must be between 1 and 10000" });
+            var amount = credits * 1m; // 1 INR per credit
+
+            if (!string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = "Custom credits available for India only." });
+
+            var (orderId, _, _, key) = await _razorpay.CreateOrderWithAmountAsync(userId, req.PlanId, amount, credits);
+            return Ok(new CreateOrderResponse
+            {
+                Provider = "razorpay",
+                OrderId = orderId,
+                Amount = amount,
+                Currency = "INR",
+                Key = key
+            });
+        }
 
         var isIndia = string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase);
         if (string.Equals(plan.Provider, "razorpay", StringComparison.OrdinalIgnoreCase) && !isIndia)
@@ -177,7 +207,7 @@ public class PaymentsController : ControllerBase
 
     [HttpPost("mock-razorpay-success")]
     [Authorize]
-    public async Task<IActionResult> MockRazorpaySuccess([FromBody] CreateRazorpayOrderRequest req)
+    public async Task<IActionResult> MockRazorpaySuccess([FromBody] CreateOrderRequest req)
     {
         var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
         var env = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
@@ -193,8 +223,20 @@ public class PaymentsController : ControllerBase
         var plan = await _db.Plans.FirstOrDefaultAsync(p => p.Id == req.PlanId && p.Provider == "razorpay");
         if (plan == null) return BadRequest(new { error = "Invalid plan" });
 
-        await AddCreditsAndRecordPayment(userId, plan, "mock");
-        return Ok(new { credits_added = plan.Credits, message = "Mock payment successful" });
+        int? creditsOverride = null;
+        if (plan.IsCustom || (plan.PlanType ?? "").ToLower() == "custom")
+        {
+            var credits = req.Credits ?? 0;
+            if (credits < 1 || credits > 10000)
+                return BadRequest(new { error = "Credits must be between 1 and 10000 for custom plan" });
+            creditsOverride = credits;
+        }
+
+        await AddCreditsAndRecordPayment(userId, plan, "mock", creditsOverride: creditsOverride);
+        var planType = (plan.PlanType ?? "").ToLower();
+        var creditsAdded = planType == "unlimited" ? 0 : (creditsOverride ?? plan.Credits);
+        var msg = planType == "unlimited" ? "Unlimited access activated" : $"Credits added: {creditsAdded}";
+        return Ok(new { credits_added = creditsAdded, message = msg });
     }
 
     [HttpPost("razorpay-webhook")]
@@ -256,10 +298,21 @@ public class PaymentsController : ControllerBase
             return Ok();
         }
 
+        int? creditsOverride = null;
+        decimal? amountOverride = null;
+        if (plan.IsCustom || (plan.PlanType ?? "").ToLower() == "custom")
+        {
+            if (notes.TryGetValue("credits", out var creditsStr) && int.TryParse(creditsStr, out var c) && c > 0)
+            {
+                creditsOverride = c;
+                amountOverride = c * 1m; // 1 INR per credit
+            }
+        }
+
         try
         {
-            await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: orderId, razorpayOrderId: orderId, razorpayPaymentId: paymentId);
-            _logger.LogInformation("Razorpay webhook: Credited user {UserId} with {Credits} credits", userId, plan.Credits);
+            await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: orderId, razorpayOrderId: orderId, razorpayPaymentId: paymentId, creditsOverride: creditsOverride, amountOverride: amountOverride);
+            _logger.LogInformation("Razorpay webhook: Processed order {OrderId} for user {UserId}", orderId, userId);
             return Ok();
         }
         catch (Exception ex)
@@ -360,9 +413,21 @@ public class PaymentsController : ControllerBase
         if (plan == null || plan.Provider?.ToLower() != "razorpay")
             return BadRequest(new { error = "Invalid plan" });
 
-        await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: req.OrderId, razorpayOrderId: req.OrderId, razorpayPaymentId: req.PaymentId);
+        int? creditsOverride = null;
+        decimal? amountOverride = null;
+        if (plan.IsCustom || (plan.PlanType ?? "").ToLower() == "custom")
+        {
+            if (notes.TryGetValue("credits", out var creditsStr) && int.TryParse(creditsStr, out var c) && c > 0)
+            {
+                creditsOverride = c;
+                amountOverride = c * 1m;
+            }
+        }
+
+        await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: req.OrderId, razorpayOrderId: req.OrderId, razorpayPaymentId: req.PaymentId, creditsOverride: creditsOverride, amountOverride: amountOverride);
         var freshUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        return Ok(new { credits_added = plan.Credits, new_balance = freshUser?.CreditsBalance ?? 0, message = "Credits added" });
+        var creditsAdded = (plan.PlanType ?? "").ToLower() == "unlimited" ? 0 : (creditsOverride ?? plan.Credits);
+        return Ok(new { credits_added = creditsAdded, new_balance = freshUser?.CreditsBalance ?? 0, unlimited_till = freshUser?.UnlimitedAccessTill, message = creditsAdded > 0 ? "Credits added" : "Unlimited access activated" });
     }
 
     [HttpPost("simulate-razorpay-webhook")]
@@ -393,31 +458,52 @@ public class PaymentsController : ControllerBase
         var plan = await _db.Plans.FirstOrDefaultAsync(p => p.Id == req.PlanId && (p.Provider == "razorpay" || p.Provider == "Razorpay"));
         if (plan == null) return BadRequest(new { error = "Invalid plan" });
 
+        int? creditsOverride = null;
+        if (plan.IsCustom || (plan.PlanType ?? "").ToLower() == "custom")
+        {
+            var credits = req.Credits ?? 0;
+            if (credits < 1 || credits > 10000)
+                return BadRequest(new { error = "Credits must be between 1 and 10000 for custom plan" });
+            creditsOverride = credits;
+        }
+
         var userEntity = await _db.Users.FindAsync(userId);
         if (userEntity == null) return NotFound();
 
-        await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: orderId, razorpayOrderId: orderId, razorpayPaymentId: null);
+        await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: orderId, razorpayOrderId: orderId, razorpayPaymentId: null, creditsOverride: creditsOverride, amountOverride: creditsOverride.HasValue ? creditsOverride.Value * 1m : null);
 
-        // Fetch fresh balance from DB (bypass EF cache)
         var freshUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-        var newBalance = freshUser?.CreditsBalance ?? 0;
-        return Ok(new { credits_added = plan.Credits, new_balance = newBalance, message = "Webhook simulated" });
+        var creditsAdded = (plan.PlanType ?? "").ToLower() == "unlimited" ? 0 : (creditsOverride ?? plan.Credits);
+        return Ok(new { credits_added = creditsAdded, new_balance = freshUser?.CreditsBalance ?? 0, unlimited_till = freshUser?.UnlimitedAccessTill, message = creditsAdded > 0 ? "Webhook simulated" : "Unlimited access activated" });
     }
 
     private async Task AddCreditsAndRecordPayment(int userId, Plan plan, string provider,
-        string? externalId = null, string? razorpayOrderId = null, string? razorpayPaymentId = null)
+        string? externalId = null, string? razorpayOrderId = null, string? razorpayPaymentId = null, int? creditsOverride = null, decimal? amountOverride = null)
     {
-        var creditType = string.Equals(plan.BillingType, "subscription", StringComparison.OrdinalIgnoreCase)
-            ? "Subscription"
-            : "Purchase";
+        var planType = (plan.PlanType ?? "credit_pack").ToLower();
+        var amount = amountOverride ?? plan.Price;
 
-        await _credits.AddCredits(userId, plan.Credits, creditType);
+        if (planType == "unlimited" && plan.DurationHours.HasValue && plan.DurationHours > 0)
+        {
+            await _credits.SetUnlimitedAccess(userId, plan.DurationHours.Value);
+        }
+        else
+        {
+            var credits = creditsOverride ?? plan.Credits;
+            if (credits > 0)
+            {
+                var creditType = string.Equals(plan.BillingType, "subscription", StringComparison.OrdinalIgnoreCase)
+                    ? "Subscription"
+                    : "Purchase";
+                await _credits.AddCredits(userId, credits, creditType);
+            }
+        }
 
         _db.Payments.Add(new Payment
         {
             UserId = userId,
             PlanId = plan.Id,
-            Amount = plan.Price,
+            Amount = amount,
             Currency = plan.Currency,
             Provider = provider,
             ExternalPaymentId = externalId ?? razorpayOrderId,

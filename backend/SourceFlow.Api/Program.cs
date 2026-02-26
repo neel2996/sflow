@@ -139,16 +139,18 @@ static async Task SeedPlansAsync(AppDbContext db)
 
     var plans = new[]
     {
-        // India — one-time credit packs (Razorpay)
-        new SourceFlow.Api.Models.Plan { Name = "Test (₹2)", Price = 2, Currency = "INR", Credits = 2, BillingType = "one_time", Provider = "razorpay" },
-        new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 99, Currency = "INR", Credits = 50, BillingType = "one_time", Provider = "razorpay" },
-        new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 199, Currency = "INR", Credits = 150, BillingType = "one_time", Provider = "razorpay" },
-        new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 999, Currency = "INR", Credits = 1000, BillingType = "one_time", Provider = "razorpay" },
+        // India — credit packs (Razorpay)
+        new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 99, Currency = "INR", Credits = 50, BillingType = "one_time", Provider = "razorpay", PlanType = "credit_pack" },
+        new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 199, Currency = "INR", Credits = 150, BillingType = "one_time", Provider = "razorpay", PlanType = "credit_pack" },
+        new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 999, Currency = "INR", Credits = 1000, BillingType = "one_time", Provider = "razorpay", PlanType = "credit_pack" },
+
+        // India — custom credits (price = credits * 1, set at purchase)
+        new SourceFlow.Api.Models.Plan { Name = "Custom Credits", Price = 0, Currency = "INR", Credits = 0, BillingType = "one_time", Provider = "razorpay", PlanType = "custom", IsCustom = true },
 
         // Global — subscription (USD, Paddle)
-        new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 9, Currency = "USD", Credits = 200, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_starter" },
-        new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 19, Currency = "USD", Credits = 600, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_growth" },
-        new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 49, Currency = "USD", Credits = 2000, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_pro" },
+        new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 9, Currency = "USD", Credits = 200, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_starter", PlanType = "credit_pack" },
+        new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 19, Currency = "USD", Credits = 600, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_growth", PlanType = "credit_pack" },
+        new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 49, Currency = "USD", Credits = 2000, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_pro", PlanType = "credit_pack" },
     };
 
     db.Plans.AddRange(plans);

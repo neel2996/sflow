@@ -31,7 +31,7 @@
   <p id="error" class="error" style="display:none"></p>
   <div id="plans" class="plans" style="display:none"></div>
   <div id="success-section" style="display:none; margin-top:20px; padding:16px; border:1px solid #057642; border-radius:8px; background:#f0f9f0;">
-    <p style="margin:0; font-weight:600; color:#057642; font-size:16px;">Credits purchased!</p>
+    <p style="margin:0; font-weight:600; color:#057642; font-size:16px;" id="success-msg">Credits purchased!</p>
     <p style="margin:8px 0 0; font-size:13px; color:#666;">You can close this tab and return to the extension.</p>
   </div>
   <div id="verify-section" style="display:none; margin-top:20px; padding:16px; border:1px solid #057642; border-radius:8px; background:#f0f9f0;">
@@ -82,10 +82,18 @@
           isIndia = country.toUpperCase() === "IN" || country.toUpperCase() === "INDIA";
         }
 
-        const [plans, config] = await Promise.all([
+        let [plans, config] = await Promise.all([
           api("GET", "/payments/plans?country=" + encodeURIComponent(country)),
           api("GET", "/payments/client-config")
         ]);
+
+        // Ensure Custom Credits is always last: Starter, Growth, Pro, then Custom
+        if (plans && plans.length > 1) {
+          const isCustomPlan = (p) => (p.plan_type || p.planType || "").toLowerCase() === "custom" || p.is_custom === true || p.isCustom === true || (p.name || "").toLowerCase().includes("custom");
+          const customPlans = plans.filter(isCustomPlan);
+          const otherPlans = plans.filter(p => !isCustomPlan(p));
+          plans = [...otherPlans.sort((a, b) => (a.price || a.Price || 0) - (b.price || b.Price || 0)), ...customPlans];
+        }
 
         // Set subtitle from actual plans (not assumed) so it always matches
         const planCurrency = plans && plans[0] ? plans[0].currency : (isIndia ? "INR" : "USD");
@@ -103,14 +111,26 @@
         } else plans.forEach((p, i) => {
           const div = document.createElement("div");
           div.className = "plan-card";
+          const planType = (p.plan_type || p.planType || "").toLowerCase();
+          const isUnlimited = planType === "unlimited";
+          const isCustom = planType === "custom" || p.is_custom === true || p.isCustom === true || (p.name || "").toLowerCase().includes("custom");
+          let desc = "";
+          if (isUnlimited) desc = (p.duration_hours || 24) + " hours unlimited";
+          else if (isCustom) desc = "1 credit = ₹1 – enter number below";
+          else desc = p.credits + " credits" + ((p.billing_type === "subscription" || p.billing_type === "Monthly") ? " / month" : "");
+
+          const customInput = isCustom ? `<input type="number" min="1" max="10000" placeholder="Enter credits" id="custom-credits-${i}" class="custom-credits-input" data-index="${i}" style="width:80px;padding:8px;margin-right:8px;border:1px solid #e0e0e0;border-radius:6px;font-size:14px;" />` : "";
+          const buyBtnDisabled = isCustom ? " disabled" : "";
           div.innerHTML = `
             <div>
               <div class="plan-name">${escapeHtml(p.name)}</div>
-              <div class="plan-credits">${p.credits} credits${(p.billing_type === "subscription" || p.billing_type === "Monthly") ? " / month" : ""}</div>
+              <div class="plan-credits">${desc}</div>
+              ${isCustom ? "<div style='font-size:12px;color:#666;margin-top:6px'>1 credit = ₹1. Enter number of credits to buy.</div>" : ""}
             </div>
-            <div style="display:flex;gap:8px;">
-              ${mockEnabled && p.provider === "razorpay" ? `<button class="buy-btn mock-btn" data-index="${i}">Test (mock)</button>` : ""}
-              <button class="buy-btn" data-index="${i}">${isIndia ? "Buy" : "Subscribe"}</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              ${customInput}
+              ${mockEnabled && p.provider === "razorpay" ? `<button class="buy-btn mock-btn" data-index="${i}"${buyBtnDisabled}>Test (mock)</button>` : ""}
+              <button class="buy-btn buy-btn-main" data-index="${i}"${buyBtnDisabled}>${isIndia ? "Buy" : "Subscribe"}</button>
             </div>
           `;
           container.appendChild(div);
@@ -119,10 +139,48 @@
 
         const razorpayKey = config.razorpay_key_id || "";
         container.querySelectorAll(".buy-btn:not(.mock-btn)").forEach(btn => {
-          btn.onclick = () => handlePlan(plans[parseInt(btn.dataset.index)], razorpayKey, btn, false);
+          btn.onclick = () => {
+            const plan = plans[parseInt(btn.dataset.index)];
+            const customInput = document.getElementById("custom-credits-" + btn.dataset.index);
+            const planIsCustom = (plan.plan_type || plan.planType || "").toLowerCase() === "custom" || plan.is_custom === true || plan.isCustom === true;
+            const credits = planIsCustom && customInput ? parseInt(customInput.value, 10) : null;
+            if (planIsCustom) {
+              if (!credits || credits < 1 || credits > 10000) {
+                document.getElementById("error").textContent = "Enter credits between 1 and 10000";
+                document.getElementById("error").style.display = "block";
+                return;
+              }
+            }
+            handlePlan(plan, razorpayKey, btn, false, credits);
+          };
         });
         container.querySelectorAll(".mock-btn").forEach(btn => {
-          btn.onclick = () => handlePlan(plans[parseInt(btn.dataset.index)], razorpayKey, btn, true);
+          btn.onclick = () => {
+            const plan = plans[parseInt(btn.dataset.index)];
+            const customInput = document.getElementById("custom-credits-" + btn.dataset.index);
+            const planIsCustom = (plan.plan_type || plan.planType || "").toLowerCase() === "custom" || plan.is_custom === true || plan.isCustom === true;
+            const credits = planIsCustom && customInput ? parseInt(customInput.value, 10) : null;
+            if (planIsCustom) {
+              if (!credits || credits < 1 || credits > 10000) {
+                document.getElementById("error").textContent = "Enter credits between 1 and 10000";
+                document.getElementById("error").style.display = "block";
+                return;
+              }
+            }
+            handlePlan(plan, razorpayKey, btn, true, credits);
+          };
+        });
+
+        // Enable Buy button for custom plan only when valid credits (1–10000) entered
+        container.querySelectorAll(".custom-credits-input").forEach(input => {
+          const updateButtons = () => {
+            const val = parseInt(input.value, 10);
+            const valid = !isNaN(val) && val >= 1 && val <= 10000;
+            const idx = input.dataset.index;
+            container.querySelectorAll(`.buy-btn[data-index="${idx}"]`).forEach(b => { b.disabled = !valid; });
+          };
+          input.addEventListener("input", updateButtons);
+          input.addEventListener("change", updateButtons);
         });
       } catch (err) {
         document.getElementById("loading").style.display = "none";
@@ -131,18 +189,22 @@
       }
     }
 
-    async function handlePlan(plan, razorpayKey, btn, useMock) {
+    async function handlePlan(plan, razorpayKey, btn, useMock, customCredits) {
       btn.disabled = true;
       document.getElementById("error").style.display = "none";
 
       try {
         if (useMock && plan.provider === "razorpay") {
-          const res = await api("POST", "/payments/mock-razorpay-success", { plan_id: plan.id });
-          alert("Credits added: " + res.credits_added + ". You can close this tab.");
+          const mockBody = { plan_id: plan.id };
+          if (customCredits) mockBody.credits = customCredits;
+          const res = await api("POST", "/payments/mock-razorpay-success", mockBody);
+          alert((res.credits_added > 0 ? "Credits added: " + res.credits_added : "Unlimited access activated") + ". You can close this tab.");
           window.close();
           return;
         }
-        const res = await api("POST", "/payments/create-order", { plan_id: plan.id });
+        const body = { plan_id: plan.id };
+        if (customCredits) body.credits = customCredits;
+        const res = await api("POST", "/payments/create-order", body);
         if (res.provider === "paddle" && res.checkout_url) {
           window.location.href = res.checkout_url;
           return;
@@ -154,10 +216,10 @@
             key: res.key || razorpayKey,
             order_id: orderId,
             name: "SourceFlow",
-            description: plan.name + " - " + plan.credits + " credits",
+            description: (plan.plan_type || plan.planType || "").toLowerCase() === "unlimited" ? plan.name + " - " + (plan.duration_hours || plan.durationHours || 24) + "h unlimited" : ((plan.plan_type || plan.planType || "").toLowerCase() === "custom" || plan.is_custom || plan.isCustom) ? plan.name + " - " + (customCredits || 0) + " credits" : plan.name + " - " + (plan.credits || 0) + " credits",
             handler: async (response) => {
               if (isLocalhost) {
-                lastPurchased = { planId: plan.id, paymentId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'sim_' + Date.now() + '_' + Math.random().toString(36).slice(2) };
+                lastPurchased = { planId: plan.id, paymentId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'sim_' + Date.now() + '_' + Math.random().toString(36).slice(2), credits: customCredits || null };
                 document.getElementById("verify-section").style.display = "block";
               } else {
                 try {
@@ -166,6 +228,8 @@
                     payment_id: response.razorpay_payment_id
                   });
                   document.getElementById("plans").style.display = "none";
+                  const successMsg = document.getElementById("success-msg");
+                  successMsg.textContent = (verifyRes.credits_added > 0 ? "Credits purchased!" : "Unlimited access activated!");
                   document.getElementById("success-section").style.display = "block";
                 } catch (err) {
                   document.getElementById("error").textContent = err.message || "Failed to verify payment. Credits may still be added via webhook.";
@@ -196,7 +260,9 @@
       btn.disabled = true;
       document.getElementById("error").style.display = "none";
       try {
-        const res = await api("POST", "/payments/simulate-razorpay-webhook", { plan_id: lastPurchased.planId, payment_id: lastPurchased.paymentId });
+        const body = { plan_id: lastPurchased.planId, payment_id: lastPurchased.paymentId };
+        if (lastPurchased.credits) body.credits = lastPurchased.credits;
+        const res = await api("POST", "/payments/simulate-razorpay-webhook", body);
         if (res.credits_added > 0) {
           alert("Verified! Credits added: " + res.credits_added + ". New balance: " + res.new_balance);
         } else {

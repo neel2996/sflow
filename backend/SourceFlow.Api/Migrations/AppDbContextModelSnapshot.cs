@@ -194,6 +194,16 @@ namespace SourceFlow.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("PlanType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("DurationHours")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsCustom")
+                        .HasColumnType("boolean");
+
                     b.HasKey("Id");
 
                     b.ToTable("Plans");
@@ -320,6 +330,9 @@ namespace SourceFlow.Api.Migrations
 
                     b.Property<string>("PasswordResetToken")
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("UnlimitedAccessTill")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

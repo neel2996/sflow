@@ -40,13 +40,24 @@ public class AnalysisController : ControllerBase
         if (cached != null)
             return Content(cached.JsonResult, "application/json");
 
-        var currentCredits = await _credits.GetCredits(userId);
-        if (currentCredits <= 0)
-            return StatusCode(403, new { error = "No credits remaining", code = "PAYWALL" });
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
 
-        var deducted = await _credits.DeductCredit(userId);
-        if (!deducted)
-            return StatusCode(403, new { error = "Failed to deduct credit", code = "PAYWALL" });
+        // Unlimited access: no credit deduction
+        if (user.UnlimitedAccessTill.HasValue && user.UnlimitedAccessTill.Value > DateTime.UtcNow)
+        {
+            // Allow usage without deducting credits
+        }
+        else
+        {
+            var currentCredits = await _credits.GetCredits(userId);
+            if (currentCredits <= 0)
+                return StatusCode(403, new { error = "No credits remaining", code = "PAYWALL" });
+
+            var deducted = await _credits.DeductCredit(userId);
+            if (!deducted)
+                return StatusCode(403, new { error = "Failed to deduct credit", code = "PAYWALL" });
+        }
 
         ScanResult result;
         try
@@ -55,8 +66,9 @@ public class AnalysisController : ControllerBase
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("OpenAI"))
         {
-            // Refund the credit since we didn't complete the analysis
-            await _credits.AddCredits(userId, 1, "Refund");
+            // Refund the credit since we didn't complete the analysis (only if we deducted)
+            if (!(user.UnlimitedAccessTill.HasValue && user.UnlimitedAccessTill.Value > DateTime.UtcNow))
+                await _credits.AddCredits(userId, 1, "Refund");
             return StatusCode(503, new { error = ex.Message, code = "AI_SERVICE_ERROR" });
         }
 

@@ -62,6 +62,43 @@ public class RazorpayService
     }
 
     /// <summary>
+    /// Creates a Razorpay order with custom amount (for custom credit purchase).
+    /// </summary>
+    public async Task<(string OrderId, decimal Amount, string Currency, string Key)> CreateOrderWithAmountAsync(int userId, int planId, decimal amountInr, int credits)
+    {
+        var keyId = _config["Razorpay:KeyId"];
+        var keySecret = _config["Razorpay:KeySecret"];
+        if (string.IsNullOrEmpty(keyId) || string.IsNullOrEmpty(keySecret))
+        {
+            _logger.LogError("Razorpay not configured");
+            throw new InvalidOperationException("Razorpay not configured");
+        }
+
+        var client = new RazorpayClient(keyId, keySecret);
+        var orderRequest = new Dictionary<string, object>
+        {
+            { "amount", (int)(amountInr * 100) },
+            { "currency", "INR" },
+            { "receipt", $"sf_{userId}_{planId}_{DateTime.UtcNow.Ticks}" },
+            { "notes", new Dictionary<string, string>
+                {
+                    { "user_id", userId.ToString() },
+                    { "plan_id", planId.ToString() },
+                    { "credits", credits.ToString() }
+                }
+            }
+        };
+
+        var order = client.Order.Create(orderRequest);
+        var orderJson = order.Attributes;
+        var idObj = orderJson["id"];
+        var orderIdStr = idObj?.ToString() ?? throw new InvalidOperationException("Failed to create order");
+
+        _logger.LogInformation("Created Razorpay order {OrderId} for user {UserId} custom {Credits} credits", (object)orderIdStr, (object)userId, (object)credits);
+        return (orderIdStr, amountInr, "INR", keyId);
+    }
+
+    /// <summary>
     /// Fetches order from Razorpay API to get notes (user_id, plan_id). Used for payment.captured webhook.
     /// </summary>
     public async Task<Dictionary<string, string>?> GetOrderNotesAsync(string orderId)

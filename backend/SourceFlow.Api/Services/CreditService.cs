@@ -54,4 +54,18 @@ public class CreditService
         await _db.SaveChangesAsync();
         return true;
     }
+
+    /// <summary>Sets unlimited access until now + durationHours. Extends if already active.</summary>
+    public async Task SetUnlimitedAccess(int userId, int durationHours)
+    {
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return;
+
+        var until = DateTime.UtcNow.AddHours(durationHours);
+        if (user.UnlimitedAccessTill.HasValue && user.UnlimitedAccessTill.Value > DateTime.UtcNow)
+            until = user.UnlimitedAccessTill.Value.AddHours(durationHours); // Extend from current end
+
+        user.UnlimitedAccessTill = until;
+        await _db.SaveChangesAsync();
+    }
 }

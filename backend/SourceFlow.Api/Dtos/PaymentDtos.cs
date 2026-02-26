@@ -6,6 +6,10 @@ public class CreateOrderRequest
 {
     [JsonPropertyName("plan_id")]
     public int PlanId { get; set; }
+
+    /// <summary>For custom plan: number of credits to purchase. Price = credits * 1 INR.</summary>
+    [JsonPropertyName("credits")]
+    public int? Credits { get; set; }
 }
 
 public class CreateOrderResponse
@@ -43,6 +47,10 @@ public class SimulateWebhookRequest
 
     [JsonPropertyName("payment_id")]
     public string? PaymentId { get; set; }
+
+    /// <summary>For custom plan: number of credits purchased.</summary>
+    [JsonPropertyName("credits")]
+    public int? Credits { get; set; }
 }
 
 public class VerifyRazorpayRequest
@@ -76,4 +84,13 @@ public class PlanResponse
 
     [JsonPropertyName("provider")]
     public string Provider { get; set; } = string.Empty;
+
+    [JsonPropertyName("plan_type")]
+    public string PlanType { get; set; } = "credit_pack";
+
+    [JsonPropertyName("duration_hours")]
+    public int? DurationHours { get; set; }
+
+    [JsonPropertyName("is_custom")]
+    public bool IsCustom { get; set; }
 }

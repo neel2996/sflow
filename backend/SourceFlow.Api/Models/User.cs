@@ -13,6 +13,8 @@ public class User
     public DateTime CreatedAt { get; set; }
     public string? PasswordResetToken { get; set; }
     public DateTime? PasswordResetExpiry { get; set; }
+    /// <summary>When set, user has unlimited access until this time (no credit deduction).</summary>
+    public DateTime? UnlimitedAccessTill { get; set; }
 
     public ICollection<Job> Jobs { get; set; } = new List<Job>();
     public ICollection<CreditTransaction> CreditTransactions { get; set; } = new List<CreditTransaction>();
