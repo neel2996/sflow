@@ -116,7 +116,7 @@
           const isCustom = planType === "custom" || p.is_custom === true || p.isCustom === true || (p.name || "").toLowerCase().includes("custom");
           let desc = "";
           if (isUnlimited) desc = (p.duration_hours || 24) + " hours unlimited";
-          else if (isCustom) desc = "1 credit = ₹1 – enter number below";
+          else if (isCustom) desc = "";
           else desc = p.credits + " credits" + ((p.billing_type === "subscription" || p.billing_type === "Monthly") ? " / month" : "");
 
           const customInput = isCustom ? `
