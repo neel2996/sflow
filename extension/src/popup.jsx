@@ -37,6 +37,7 @@ function App() {
   const [otp, setOtp] = useState("");
   const [otpBusy, setOtpBusy] = useState(false);
   const [otpStatus, setOtpStatus] = useState("");
+  const [otpError, setOtpError] = useState("");
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState("feedback");
@@ -108,6 +109,7 @@ function App() {
     setResendMsg("");
     setOtp("");
     setOtpStatus("");
+    setOtpError("");
   }
 
   function openJobsPage() {
@@ -361,7 +363,10 @@ function App() {
             maxLength={6}
             placeholder="6-digit OTP"
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={(e) => {
+              setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
+              setOtpError("");
+            }}
           />
           <button
             style={{ ...s.button, padding: "8px", fontSize: "12px", marginBottom: "8px" }}
@@ -370,6 +375,7 @@ function App() {
               setOtpBusy(true);
               setError("");
               setOtpStatus("");
+              setOtpError("");
               try {
                 const res = await api.verifyEmailOtp(otp);
                 const me = await api.getMe();
@@ -388,8 +394,8 @@ function App() {
                 }
               } catch (err) {
                 const msg = String(err?.message || "");
-                if (msg.toLowerCase().includes("invalid or expired otp") || msg.toLowerCase().includes("invalid otp")) {
-                  setError("Invalid OTP");
+                if (err?.statusCode === 400 || msg.toLowerCase().includes("invalid or expired otp") || msg.toLowerCase().includes("invalid otp")) {
+                  setOtpError("Invalid OTP");
                 } else {
                   setError(msg || "Verification failed");
                 }
@@ -400,6 +406,7 @@ function App() {
           >
             {otpBusy ? "Verifying..." : "Verify OTP"}
           </button>
+          {otpError && <div style={{ marginTop: "-2px", marginBottom: "8px", fontSize: "11px", color: COLORS.error }}>{otpError}</div>}
           {otpStatus && <div style={{ marginTop: "-2px", marginBottom: "8px", fontSize: "11px", color: "#057642" }}>{otpStatus}</div>}
           <button
             style={{ ...s.button, padding: "8px", fontSize: "12px" }}
@@ -409,6 +416,7 @@ function App() {
               setResendMsg("");
               setError("");
               setOtpStatus("");
+              setOtpError("");
               try {
                 const res = await api.resendVerification();
                 setResendMsg(res.message || "Verification OTP sent.");
