@@ -31,6 +31,7 @@ public class UserController : ControllerBase
             email = user.Email,
             credits = user.CreditsBalance,
             country = user.Country,
+            isEmailVerified = user.IsEmailVerified,
             createdAt = user.CreatedAt,
             unlimitedAccessTill = user.UnlimitedAccessTill
         });

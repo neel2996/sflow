@@ -18,10 +18,10 @@ builder.Services.AddControllers();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("postgres");
 
-// PostgreSQL — use DefaultConnection or DATABASE_URL (Render)
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? builder.Configuration["DATABASE_URL"]?.Replace("postgres://", "postgresql://")
-    ?? throw new InvalidOperationException("Set ConnectionStrings:DefaultConnection or DATABASE_URL");
+// PostgreSQL — prefer DATABASE_URL (Render), else DefaultConnection
+var connStr = builder.Configuration["DATABASE_URL"]?.Replace("postgres://", "postgresql://")
+    ?? builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Set DATABASE_URL or ConnectionStrings:DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
         connStr,
@@ -116,8 +116,69 @@ app.MapGet("/reset-password", (IWebHostEnvironment env) =>
     return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
 });
 
+app.MapGet("/verify-email", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "wwwroot", "verify-email.html");
+    return File.Exists(path) ? Results.File(path, "text/html") : Results.NotFound();
+});
+
 // Controllers
 app.MapControllers();
+
+// fix-migrations: remove LinkedIn migration from history, apply revert, then exit
+var fixMigrations = args.Contains("fix-migrations");
+if (fixMigrations)
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    if (!db.Database.CanConnect())
+        throw new InvalidOperationException("Cannot connect to database. Set ConnectionStrings:DefaultConnection or DATABASE_URL.");
+    await using var conn = db.Database.GetDbConnection() as Npgsql.NpgsqlConnection;
+    if (conn == null) throw new InvalidOperationException("Expected NpgsqlConnection");
+    await conn.OpenAsync();
+
+    // Remove LinkedIn migration from history (file was deleted)
+    await using (var cmd = conn.CreateCommand())
+    {
+        cmd.CommandText = @"DELETE FROM ""__EFMigrationsHistory"" WHERE ""MigrationId"" = '20260227000000_LinkedInProfileAuth';";
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    // Run revert schema (idempotent)
+    await using (var cmd = conn.CreateCommand())
+    {
+        cmd.CommandText = @"
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'Users' AND column_name = 'LinkedInProfileUrl') THEN
+                    DROP INDEX IF EXISTS ""IX_Users_LinkedInProfileUrl"";
+                    ALTER TABLE ""Users"" DROP COLUMN ""LinkedInProfileUrl"";
+                    ALTER TABLE ""Users"" DROP COLUMN ""DailyScansUsed"";
+                    ALTER TABLE ""Users"" DROP COLUMN ""LastScanDate"";
+                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""Email"" text NOT NULL DEFAULT '';
+                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""PasswordHash"" text NOT NULL DEFAULT '';
+                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""PasswordResetToken"" text;
+                    ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""PasswordResetExpiry"" timestamp with time zone;
+                    UPDATE ""Users"" SET ""Email"" = 'legacy@sourceflow.local' WHERE ""Email"" = '';
+                    ALTER TABLE ""Users"" ALTER COLUMN ""Email"" DROP DEFAULT;
+                    CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Users_Email"" ON ""Users"" (""Email"");
+                END IF;
+            END $$;
+        ";
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    // Mark revert migration as applied
+    await using (var cmd = conn.CreateCommand())
+    {
+        cmd.CommandText = @"INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"") VALUES ('20260227100000_RevertLinkedInProfileAuth', '8.0.0') ON CONFLICT (""MigrationId"") DO NOTHING;";
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    Console.WriteLine("fix-migrations: LinkedIn schema reverted, email/password restored.");
+    return;
+}
+
 
 // Auto run migrations + seed plans
 using (var scope = app.Services.CreateScope())

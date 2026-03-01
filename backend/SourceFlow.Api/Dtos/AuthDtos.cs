@@ -49,3 +49,16 @@ public class ResetPasswordRequest
     [Required, MinLength(6)]
     public string NewPassword { get; set; } = string.Empty;
 }
+
+public class VerifyEmailRequest
+{
+    [Required]
+    public string Token { get; set; } = string.Empty;
+}
+
+public class VerifyEmailOtpRequest
+{
+    [Required]
+    [RegularExpression(@"^\d{6}$", ErrorMessage = "OTP must be 6 digits.")]
+    public string Otp { get; set; } = string.Empty;
+}

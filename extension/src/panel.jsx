@@ -167,29 +167,58 @@ function parseMonthYear(str) {
   return new Date(parseInt(m[2]), mo, 1);
 }
 
-function computeTotalExperience() {
-  const pageText = (document.querySelector("main") || document.body).innerText || "";
+function getExperienceSectionText() {
+  const byId = document.getElementById("experience")?.closest("section");
+  if (byId?.innerText?.trim()) return { text: byId.innerText, source: "experience-id" };
 
-  // Match "Month Year - Month Year" or "Month Year - Present"
-  const rangeRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\s*[-–]+\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Present)[a-z]*\s*(\d{0,4})/gi;
+  const sections = Array.from(document.querySelectorAll("section"));
+  for (const sec of sections) {
+    const heading = sec.querySelector("h2, h3");
+    const headingText = (heading?.innerText || "").trim().toLowerCase();
+    if (headingText.includes("experience")) {
+      const text = sec.innerText?.trim();
+      if (text) return { text, source: "experience-heading" };
+    }
+  }
+
+  const fallback = (document.querySelector("main") || document.body).innerText || "";
+  return { text: fallback, source: "fallback-main" };
+}
+
+function computeTotalExperience() {
+  const { text, source } = getExperienceSectionText();
+  const pageText = (text || "").trim();
+
+  // Only parse strict date-range lines (LinkedIn metadata), not free-text role descriptions.
+  const lineRegex = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}\s*(?:-|–|to)\s*(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}|Present)(?:\s*·.*)?$/i;
+  const rangeRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\s*(?:-|–|to)\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Present)[a-z]*\s*(\d{4})?/i;
+  const lines = pageText.split("\n").map((l) => l.trim()).filter(Boolean).filter((l) => lineRegex.test(l));
 
   const ranges = [];
-  let m;
-  while ((m = rangeRegex.exec(pageText)) !== null) {
+  const seen = new Set();
+  for (const line of lines) {
+    const m = line.match(rangeRegex);
+    if (!m) continue;
     const startStr = `${m[1]} ${m[2]}`;
-    const endStr = /present/i.test(m[3]) ? "present" : `${m[3]} ${m[4]}`;
+    const isPresent = /present/i.test(m[3]);
+    const endStr = isPresent ? "present" : `${m[3]} ${m[4] || m[2]}`;
     const start = parseMonthYear(startStr);
     const end = parseMonthYear(endStr);
     if (!start || !end || end < start) continue;
-    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-    if (months <= 0 || months > 480) continue;
-    ranges.push({ start, end, months });
+    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    if (isPresent) months += 1;
+    if (months <= 0 || months > 600) continue;
+    const key = `${start.getFullYear()}-${start.getMonth()}|${end.getFullYear()}-${end.getMonth()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ranges.push({ start, end, months, isPresent });
   }
 
+  console.log(`[SF] Source: ${source}`);
   console.log("[SF] Raw ranges found:", ranges.map(r => `${r.start.toDateString()} → ${r.end.toDateString()} (${r.months}mo)`));
   if (ranges.length === 0) {
     console.log("[SF] No date ranges found in page text!");
-    return { totalMonths: 0, totalYears: 0, roleCount: 0, roles: [] };
+    return { totalMonths: 0, totalYears: 0, roleCount: 0, roles: [], source };
   }
 
   // Sort by start date
@@ -199,8 +228,10 @@ function computeTotalExperience() {
   const merged = [{ ...ranges[0] }];
   for (let i = 1; i < ranges.length; i++) {
     const last = merged[merged.length - 1];
-    if (ranges[i].start <= last.end) {
+    const lastEndPlusOne = new Date(last.end.getFullYear(), last.end.getMonth() + 1, 1);
+    if (ranges[i].start <= lastEndPlusOne) {
       if (ranges[i].end > last.end) last.end = ranges[i].end;
+      if (ranges[i].isPresent) last.isPresent = true;
     } else {
       merged.push({ ...ranges[i] });
     }
@@ -209,14 +240,24 @@ function computeTotalExperience() {
   let totalMonths = 0;
   const roles = [];
   for (const r of merged) {
-    const mo = (r.end.getFullYear() - r.start.getFullYear()) * 12 + (r.end.getMonth() - r.start.getMonth());
+    let mo = (r.end.getFullYear() - r.start.getFullYear()) * 12 + (r.end.getMonth() - r.start.getMonth());
+    if (r.isPresent) mo += 1;
     totalMonths += mo;
     roles.push({ text: `${mo} mos`, months: mo });
   }
 
+  // Boundary-inclusive normalization: include one boundary month overall.
+  if (totalMonths > 0) {
+    totalMonths += 1;
+    if (roles.length > 0) {
+      roles[0].months += 1;
+      roles[0].text = `${roles[0].months} mos`;
+    }
+  }
+
   const years = Math.round((totalMonths / 12) * 10) / 10;
   console.log("[SF] Merged periods:", merged.length, "| Total:", totalMonths, "months =", years, "years");
-  return { totalMonths, totalYears: years, roleCount: merged.length, roles };
+  return { totalMonths, totalYears: years, roleCount: merged.length, roles, source };
 }
 
 function extractProfileName() {
@@ -287,6 +328,7 @@ export default function Panel() {
   const [shortlisted, setShortlisted] = useState(false);
   const [shortlisting, setShortlisting] = useState(false);
   const [country, setCountry] = useState("IN");
+  const [isEmailVerified, setIsEmailVerified] = useState(true);
 
   useEffect(() => {
     checkAuth();
@@ -305,6 +347,7 @@ export default function Panel() {
       setAuthed(true);
       setCredits(me.credits ?? 0);
       setCountry(me.country || "IN");
+      setIsEmailVerified(me.isEmailVerified === true);
       const jobList = await api.getJobs();
       setJobs(jobList);
       if (jobList.length > 0) setSelectedJob(jobList[0].id.toString());
@@ -342,7 +385,7 @@ export default function Panel() {
     try {
       await autoScrollPage();
       const { name, profileUrl, profileText, computedExperience } = extractProfileText();
-      setExpDebug(`${computedExperience.totalYears} yrs detected (${computedExperience.totalMonths} months)`);
+      setExpDebug(`${computedExperience.totalYears} yrs detected (${computedExperience.totalMonths} months, ${computedExperience.source || "unknown-source"})`);
       const cleanUrl = profileUrl.replace(/\/details\/experience\/?$/, "").replace(/\/$/, "");
       const data = await api.scan(parseInt(selectedJob), cleanUrl, profileText, computedExperience.totalYears);
       setResult(data);
@@ -351,7 +394,7 @@ export default function Panel() {
       setCredits(me.credits ?? 0);
     } catch (err) {
       setError(err.message);
-      if (err.statusCode === 403 || err.code === "PAYWALL") {
+      if (err.code === "PAYWALL") {
         chrome.runtime.sendMessage({ type: "OPEN_PAYWALL", country });
       }
     } finally {
@@ -435,12 +478,17 @@ export default function Panel() {
               </select>
 
               <button
-                style={{ ...styles.button, ...(scanning || credits <= 0 ? styles.buttonDisabled : {}) }}
+                style={{ ...styles.button, ...(scanning || credits <= 0 || !isEmailVerified ? styles.buttonDisabled : {}) }}
                 onClick={handleScan}
-                disabled={scanning || credits <= 0}
+                disabled={scanning || credits <= 0 || !isEmailVerified}
               >
                 {scanning ? "Scanning..." : "Scan Profile"}
               </button>
+              {!isEmailVerified && (
+                <div style={{ marginTop: "8px", fontSize: "12px", color: COLORS.warning }}>
+                  Verify your email in the SourceFlow popup before scanning.
+                </div>
+              )}
 
               <button
                 style={{ ...styles.button, marginTop: "8px", backgroundColor: COLORS.success, fontSize: "12px", padding: "8px" }}

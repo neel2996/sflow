@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SourceFlow - Verify Email</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; color: #333; max-width: 520px; margin: 40px auto; }
+    h2 { color: #0073b1; margin-bottom: 8px; }
+    .card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+    .ok { color: #057642; }
+    .err { color: #b24020; }
+  </style>
+</head>
+<body>
+  <h2>Verify Email</h2>
+  <div class="card">
+    <p id="status">Verifying your email...</p>
+  </div>
+  <script>
+    const token = new URLSearchParams(location.search).get("token");
+    const statusEl = document.getElementById("status");
+
+    async function run() {
+      if (!token) {
+        statusEl.textContent = "Missing verification token.";
+        statusEl.className = "err";
+        return;
+      }
+
+      try {
+        const res = await fetch("/auth/verify-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Verification failed");
+        statusEl.textContent = "Email verified successfully. You can return to the extension.";
+        statusEl.className = "ok";
+      } catch (err) {
+        statusEl.textContent = err.message || "Verification failed";
+        statusEl.className = "err";
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>

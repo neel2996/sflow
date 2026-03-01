@@ -51,6 +51,10 @@ export const api = {
     request("POST", "/auth/login", { email, password }),
   forgotPassword: (email) =>
     request("POST", "/auth/forgot-password", { email }),
+  verifyEmailOtp: (otp) =>
+    request("POST", "/auth/verify-email-otp", { otp }),
+  resendVerification: () =>
+    request("POST", "/auth/resend-verification"),
   getMe: () => request("GET", "/user/me"),
   updateCountry: (country) =>
     request("PATCH", "/user/me", { country }),

@@ -31,6 +31,12 @@ function App() {
   const [shortlistLoading, setShortlistLoading] = useState(false);
   const [country, setCountry] = useState("IN");
   const [registerCountry, setRegisterCountry] = useState("IN");
+  const [isEmailVerified, setIsEmailVerified] = useState(true);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendMsg, setResendMsg] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpStatus, setOtpStatus] = useState("");
 
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState("feedback");
@@ -55,6 +61,7 @@ function App() {
       setUserEmail(me.email || storedEmail || "");
       setCredits(me.credits ?? 0);
       setCountry(me.country || "IN");
+      setIsEmailVerified(me.isEmailVerified === true);
       const jobList = await api.getJobs();
       setJobs(jobList);
       if (jobList.length > 0) setShortlistJobId(jobList[0].id.toString());
@@ -74,9 +81,12 @@ function App() {
         ? await api.register(email, password, registerCountry)
         : await api.login(email, password);
       await setAuth(data.token, data.email);
-      setUserEmail(data.email);
-      setCredits(data.credits);
-      setCountry(data.country || "IN");
+      const me = await api.getMe();
+      setUserEmail(me.email || data.email);
+      setCredits(me.credits ?? data.credits);
+      setCountry(me.country || data.country || "IN");
+      setIsEmailVerified(me.isEmailVerified === true);
+      if (isRegister) setResendMsg("Verification OTP sent. Check your inbox.");
       const jobList = await api.getJobs();
       setJobs(jobList);
       setView("dashboard");
@@ -94,6 +104,10 @@ function App() {
     setView("auth");
     setEmail("");
     setPassword("");
+    setIsEmailVerified(true);
+    setResendMsg("");
+    setOtp("");
+    setOtpStatus("");
   }
 
   function openJobsPage() {
@@ -334,6 +348,82 @@ function App() {
           </button>
         </div>
       </div>
+      {!isEmailVerified && (
+        <div style={{ marginBottom: "12px", padding: "10px 12px", backgroundColor: "#fff8e8", borderRadius: "6px", border: `1px solid ${COLORS.border}` }}>
+          <div style={{ fontSize: "12px", fontWeight: "600", marginBottom: "4px" }}>Email not verified</div>
+          <div style={{ fontSize: "12px", color: COLORS.textLight, marginBottom: "8px" }}>
+            Enter the 6-digit OTP sent to your email to start scanning.
+          </div>
+          <input
+            style={{ ...s.input, marginBottom: "8px", backgroundColor: "#fff" }}
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="6-digit OTP"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          />
+          <button
+            style={{ ...s.button, padding: "8px", fontSize: "12px", marginBottom: "8px" }}
+            disabled={otpBusy || otp.length !== 6}
+            onClick={async () => {
+              setOtpBusy(true);
+              setError("");
+              setOtpStatus("");
+              try {
+                const res = await api.verifyEmailOtp(otp);
+                const me = await api.getMe();
+                const verified = me?.isEmailVerified === true;
+                setIsEmailVerified(verified);
+                if (verified) {
+                  if ((res?.message || "").toLowerCase().includes("already")) {
+                    setOtpStatus("Already verified.");
+                  } else {
+                    setOtpStatus("OTP verified. Your email is now verified.");
+                  }
+                  setResendMsg("");
+                  setOtp("");
+                } else {
+                  setOtpStatus("Verification pending. Please try again.");
+                }
+              } catch (err) {
+                const msg = String(err?.message || "");
+                if (msg.toLowerCase().includes("invalid or expired otp") || msg.toLowerCase().includes("invalid otp")) {
+                  setError("Invalid OTP");
+                } else {
+                  setError(msg || "Verification failed");
+                }
+              } finally {
+                setOtpBusy(false);
+              }
+            }}
+          >
+            {otpBusy ? "Verifying..." : "Verify OTP"}
+          </button>
+          {otpStatus && <div style={{ marginTop: "-2px", marginBottom: "8px", fontSize: "11px", color: "#057642" }}>{otpStatus}</div>}
+          <button
+            style={{ ...s.button, padding: "8px", fontSize: "12px" }}
+            disabled={resendBusy}
+            onClick={async () => {
+              setResendBusy(true);
+              setResendMsg("");
+              setError("");
+              setOtpStatus("");
+              try {
+                const res = await api.resendVerification();
+                setResendMsg(res.message || "Verification OTP sent.");
+              } catch (err) {
+                setError(err.message);
+              } finally {
+                setResendBusy(false);
+              }
+            }}
+          >
+            {resendBusy ? "Sending..." : "Resend OTP"}
+          </button>
+          {resendMsg && <div style={{ marginTop: "6px", fontSize: "11px", color: "#057642" }}>{resendMsg}</div>}
+        </div>
+      )}
       <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
         <span style={{ fontSize: "12px", color: COLORS.textLight }}>Region:</span>
         <select

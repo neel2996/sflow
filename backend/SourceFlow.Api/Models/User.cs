@@ -13,6 +13,10 @@ public class User
     public DateTime CreatedAt { get; set; }
     public string? PasswordResetToken { get; set; }
     public DateTime? PasswordResetExpiry { get; set; }
+    public bool IsEmailVerified { get; set; }
+    public string? EmailVerificationTokenHash { get; set; }
+    public DateTime? EmailVerificationExpiry { get; set; }
+    public DateTime? EmailVerificationSentAt { get; set; }
     /// <summary>When set, user has unlimited access until this time (no credit deduction).</summary>
     public DateTime? UnlimitedAccessTill { get; set; }
 

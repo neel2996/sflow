@@ -54,13 +54,15 @@ public class FeedbackController : ControllerBase
     }
 
     /// <summary>
-    /// Get all feedback (admin future-ready). Ordered by CreatedAt desc.
+    /// Get feedback submitted by the authenticated user.
     /// </summary>
     [HttpGet]
-    [AllowAnonymous]
+    [Authorize]
     public async Task<IActionResult> List()
     {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
         var items = await _db.Feedbacks
+            .Where(f => f.UserId == userId)
             .OrderByDescending(f => f.CreatedAt)
             .Select(f => new
             {

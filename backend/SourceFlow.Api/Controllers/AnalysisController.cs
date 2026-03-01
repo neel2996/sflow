@@ -42,6 +42,8 @@ public class AnalysisController : ControllerBase
 
         var user = await _db.Users.FindAsync(userId);
         if (user == null) return NotFound();
+        if (!user.IsEmailVerified)
+            return StatusCode(403, new { error = "Verify your email to start scanning.", code = "EMAIL_NOT_VERIFIED" });
 
         // Unlimited access: no credit deduction
         if (user.UnlimitedAccessTill.HasValue && user.UnlimitedAccessTill.Value > DateTime.UtcNow)

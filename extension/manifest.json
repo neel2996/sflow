@@ -12,6 +12,7 @@
   
     "host_permissions": [
       "https://www.linkedin.com/*",
+      "http://localhost:8080/*",
       "https://sflow-5diw.onrender.com/*",
       "https://checkout.razorpay.com/*",
       "https://api.razorpay.com/*"

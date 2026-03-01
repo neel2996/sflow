@@ -34,12 +34,17 @@ public class AuthController : ControllerBase
         if (await _db.Users.AnyAsync(u => u.Email == req.Email))
             return BadRequest(new { error = "Email already registered" });
 
+        var (verificationOtp, verificationOtpHash, verificationExpiry) = CreateEmailVerificationOtp();
         var user = new User
         {
             Email = req.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             CreditsBalance = 50,
             Country = req.Country ?? "IN",
+            IsEmailVerified = false,
+            EmailVerificationTokenHash = verificationOtpHash,
+            EmailVerificationExpiry = verificationExpiry,
+            EmailVerificationSentAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -54,6 +59,19 @@ public class AuthController : ControllerBase
             CreatedAt = DateTime.UtcNow
         });
         await _db.SaveChangesAsync();
+
+        var sent = await _email.SendEmailVerificationOtpAsync(user.Email, verificationOtp);
+        if (!sent)
+        {
+            var signupBonus = await _db.CreditTransactions
+                .Where(t => t.UserId == user.Id && t.Type == "signup_bonus")
+                .ToListAsync();
+            if (signupBonus.Count > 0)
+                _db.CreditTransactions.RemoveRange(signupBonus);
+            _db.Users.Remove(user);
+            await _db.SaveChangesAsync();
+            return StatusCode(503, new { error = "Could not send OTP email. Try again in a moment." });
+        }
 
         return Ok(new AuthResponse
         {
@@ -98,7 +116,7 @@ public class AuthController : ControllerBase
 
         var sent = await _email.SendPasswordResetAsync(user.Email, resetLink);
         if (!sent)
-            return StatusCode(500, new { error = "Email not configured. Set Resend:ApiKey." });
+            return StatusCode(500, new { error = "Email not configured. Set Brevo:ApiKey and Brevo:FromEmail." });
 
         return Ok(new { message = "If that email exists, we've sent a reset link." });
     }
@@ -123,6 +141,66 @@ public class AuthController : ControllerBase
         return Ok(new { message = "Password reset. You can now log in." });
     }
 
+    [HttpPost("verify-email")]
+    [AllowAnonymous]
+    public IActionResult VerifyEmail([FromBody] VerifyEmailRequest req)
+    {
+        return BadRequest(new { error = "Link verification is disabled. Use OTP verification from the extension popup." });
+    }
+
+    [HttpPost("verify-email-otp")]
+    [Authorize]
+    public async Task<IActionResult> VerifyEmailOtp([FromBody] VerifyEmailOtpRequest req)
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
+        if (user.IsEmailVerified)
+            return Ok(new { message = "Email already verified." });
+
+        var otpHash = HashToken(req.Otp);
+        if (user.EmailVerificationTokenHash != otpHash ||
+            user.EmailVerificationExpiry == null ||
+            user.EmailVerificationExpiry <= DateTime.UtcNow)
+        {
+            return BadRequest(new { error = "Invalid or expired OTP. Request a new code." });
+        }
+
+        user.IsEmailVerified = true;
+        user.EmailVerificationTokenHash = null;
+        user.EmailVerificationExpiry = null;
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "Email verified successfully." });
+    }
+
+    [HttpPost("resend-verification")]
+    [Authorize]
+    public async Task<IActionResult> ResendVerification()
+    {
+        var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
+        if (user.IsEmailVerified)
+            return Ok(new { message = "Email is already verified." });
+
+        if (user.EmailVerificationSentAt.HasValue && user.EmailVerificationSentAt.Value > DateTime.UtcNow.AddMinutes(-1))
+            return StatusCode(429, new { error = "Please wait before requesting another verification email." });
+
+        var (otp, otpHash, expiry) = CreateEmailVerificationOtp();
+        user.EmailVerificationTokenHash = otpHash;
+        user.EmailVerificationExpiry = expiry;
+        user.EmailVerificationSentAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var sent = await _email.SendEmailVerificationOtpAsync(user.Email, otp);
+        if (!sent)
+            return StatusCode(500, new { error = "Email not configured. Set Brevo:ApiKey and Brevo:FromEmail." });
+
+        return Ok(new { message = "Verification OTP sent." });
+    }
+
     private string GenerateJwt(User user)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
@@ -143,5 +221,17 @@ public class AuthController : ControllerBase
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static (string Otp, string OtpHash, DateTime Expiry) CreateEmailVerificationOtp()
+    {
+        var otp = RandomNumberGenerator.GetInt32(0, 1000000).ToString("D6");
+        return (otp, HashToken(otp), DateTime.UtcNow.AddMinutes(10));
+    }
+
+    private static string HashToken(string token)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
+        return Convert.ToHexString(bytes);
     }
 }
