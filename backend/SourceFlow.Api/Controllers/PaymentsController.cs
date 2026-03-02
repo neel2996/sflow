@@ -15,19 +15,23 @@ namespace SourceFlow.Api.Controllers;
 [Route("payments")]
 public class PaymentsController : ControllerBase
 {
+    private const decimal DefaultCustomCreditRateInr = 2.75m;
     private readonly AppDbContext _db;
     private readonly RazorpayService _razorpay;
     private readonly PaddleService _paddle;
     private readonly CreditService _credits;
     private readonly ILogger<PaymentsController> _logger;
+    private readonly decimal _customCreditRateInr;
 
-    public PaymentsController(AppDbContext db, RazorpayService razorpay, PaddleService paddle, CreditService credits, ILogger<PaymentsController> logger)
+    public PaymentsController(AppDbContext db, RazorpayService razorpay, PaddleService paddle, CreditService credits, ILogger<PaymentsController> logger, IConfiguration config)
     {
         _db = db;
         _razorpay = razorpay;
         _paddle = paddle;
         _credits = credits;
         _logger = logger;
+        var configuredRate = config.GetValue<decimal>("Pricing:CustomCreditRateInr");
+        _customCreditRateInr = configuredRate > 0 ? configuredRate : DefaultCustomCreditRateInr;
     }
 
     [HttpGet("client-config")]
@@ -39,7 +43,13 @@ public class PaymentsController : ControllerBase
         var paddleEnabled = !string.IsNullOrEmpty(config["Paddle:ApiKey"]);
         var mockEnabled = config.GetValue<bool>("Razorpay:EnableMockPayments")
             || HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment();
-        return Ok(new { razorpay_key_id = razorpayKey ?? "", paddle_enabled = paddleEnabled, mock_enabled = mockEnabled });
+        return Ok(new
+        {
+            razorpay_key_id = razorpayKey ?? "",
+            paddle_enabled = paddleEnabled,
+            mock_enabled = mockEnabled,
+            custom_credit_rate_inr = _customCreditRateInr
+        });
     }
 
     [HttpGet("plans")]
@@ -98,13 +108,13 @@ public class PaymentsController : ControllerBase
         var plan = await _db.Plans.FindAsync(req.PlanId);
         if (plan == null) return BadRequest(new { error = "Invalid plan" });
 
-        // Custom plan: require credits, price = credits * 1 INR
+        // Custom plan: require credits, price = credits * configured INR rate
         if (plan.IsCustom || (plan.PlanType ?? "").ToLower() == "custom")
         {
             var credits = req.Credits ?? 0;
             if (credits < 1 || credits > 10000)
                 return BadRequest(new { error = "Credits must be between 1 and 10000" });
-            var amount = credits * 1m; // 1 INR per credit
+            var amount = credits * _customCreditRateInr;
 
             if (!string.Equals(user.Country, "IN", StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { error = "Custom credits available for India only." });
@@ -305,7 +315,7 @@ public class PaymentsController : ControllerBase
             if (notes.TryGetValue("credits", out var creditsStr) && int.TryParse(creditsStr, out var c) && c > 0)
             {
                 creditsOverride = c;
-                amountOverride = c * 1m; // 1 INR per credit
+                amountOverride = c * _customCreditRateInr;
             }
         }
 
@@ -420,7 +430,7 @@ public class PaymentsController : ControllerBase
             if (notes.TryGetValue("credits", out var creditsStr) && int.TryParse(creditsStr, out var c) && c > 0)
             {
                 creditsOverride = c;
-                amountOverride = c * 1m;
+                amountOverride = c * _customCreditRateInr;
             }
         }
 
@@ -470,7 +480,16 @@ public class PaymentsController : ControllerBase
         var userEntity = await _db.Users.FindAsync(userId);
         if (userEntity == null) return NotFound();
 
-        await AddCreditsAndRecordPayment(userId, plan, "razorpay", externalId: orderId, razorpayOrderId: orderId, razorpayPaymentId: null, creditsOverride: creditsOverride, amountOverride: creditsOverride.HasValue ? creditsOverride.Value * 1m : null);
+        await AddCreditsAndRecordPayment(
+            userId,
+            plan,
+            "razorpay",
+            externalId: orderId,
+            razorpayOrderId: orderId,
+            razorpayPaymentId: null,
+            creditsOverride: creditsOverride,
+            amountOverride: creditsOverride.HasValue ? creditsOverride.Value * _customCreditRateInr : null);
+
 
         var freshUser = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
         var creditsAdded = (plan.PlanType ?? "").ToLower() == "unlimited" ? 0 : (creditsOverride ?? plan.Credits);

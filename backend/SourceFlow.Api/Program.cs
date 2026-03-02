@@ -19,9 +19,10 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("postgres");
 
 // PostgreSQL — prefer DATABASE_URL (Render), else DefaultConnection
-var connStr = builder.Configuration["DATABASE_URL"]?.Replace("postgres://", "postgresql://")
+var rawConnStr = builder.Configuration["DATABASE_URL"]
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Set DATABASE_URL or ConnectionStrings:DefaultConnection");
+var connStr = rawConnStr;
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
         connStr,
@@ -205,7 +206,7 @@ static async Task SeedPlansAsync(AppDbContext db)
         new SourceFlow.Api.Models.Plan { Name = "Growth", Price = 199, Currency = "INR", Credits = 150, BillingType = "one_time", Provider = "razorpay", PlanType = "credit_pack" },
         new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 999, Currency = "INR", Credits = 1000, BillingType = "one_time", Provider = "razorpay", PlanType = "credit_pack" },
 
-        // India — custom credits (price = credits * 1, set at purchase)
+        // India — custom credits (price = credits * configured INR rate, set at purchase)
         new SourceFlow.Api.Models.Plan { Name = "Custom Credits", Price = 0, Currency = "INR", Credits = 0, BillingType = "one_time", Provider = "razorpay", PlanType = "custom", IsCustom = true },
 
         // Global — subscription (USD, Paddle)

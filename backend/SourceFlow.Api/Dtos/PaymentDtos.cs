@@ -7,7 +7,7 @@ public class CreateOrderRequest
     [JsonPropertyName("plan_id")]
     public int PlanId { get; set; }
 
-    /// <summary>For custom plan: number of credits to purchase. Price = credits * 1 INR.</summary>
+    /// <summary>For custom plan: number of credits to purchase. Price = credits * configured INR rate.</summary>
     [JsonPropertyName("credits")]
     public int? Credits { get; set; }
 }
