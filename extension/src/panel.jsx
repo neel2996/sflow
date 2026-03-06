@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { api, getToken } from "./api.js";
 
 const COLORS = {
@@ -438,34 +439,29 @@ export default function Panel() {
 
   return (
     <div style={styles.container}>
-      {showCopiedSnackbar && (
+      {showCopiedSnackbar && createPortal(
         <div
           style={{
             position: "fixed",
             bottom: "24px",
-            left: "50%",
-            transform: "translateX(-50%)",
+            right: "24px",
             backgroundColor: "#1a1a1a",
             color: "#fff",
-            padding: "10px 20px",
+            padding: "12px 24px",
             borderRadius: "8px",
             fontSize: "14px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
-            zIndex: 10001,
+            fontWeight: 500,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+            zIndex: 2147483647,
           }}
         >
           Copied to clipboard
-        </div>
+        </div>,
+        document.body
       )}
       <div style={styles.header}>
         <h3 style={styles.logo}>SourceFlow</h3>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span
-            style={{ fontSize: "11px", color: COLORS.primary, cursor: "pointer", textDecoration: "none" }}
-            onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL("legal.html") })}
-          >
-            Legal
-          </span>
           {authed && <span style={styles.credits}>{credits ?? 0} credits</span>}
           <button
             onClick={() => setOpen(false)}
@@ -582,9 +578,13 @@ export default function Panel() {
               <button
                 style={{ ...styles.button, marginTop: "8px", backgroundColor: "transparent", color: COLORS.primary, border: `1px solid ${COLORS.primary}`, fontSize: "12px", padding: "8px" }}
                 onClick={async () => {
-                  await navigator.clipboard.writeText(result.outreach_message);
-                  setShowCopiedSnackbar(true);
-                  setTimeout(() => setShowCopiedSnackbar(false), 2500);
+                  try {
+                    await navigator.clipboard.writeText(result.outreach_message);
+                    setShowCopiedSnackbar(true);
+                    setTimeout(() => setShowCopiedSnackbar(false), 3000);
+                  } catch {
+                    // clipboard may fail in some contexts
+                  }
                 }}
               >
                 Copy Outreach Message

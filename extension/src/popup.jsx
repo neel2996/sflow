@@ -273,10 +273,7 @@ function App() {
           </span>
         </p>
         <p style={{ fontSize: "11px", color: COLORS.textLight, textAlign: "center", marginTop: "12px" }}>
-          By continuing, you agree to our{" "}
-          <span style={{ color: COLORS.primary, cursor: "pointer", textDecoration: "underline" }} onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL("legal.html") })}>
-            Terms & Privacy
-          </span>
+          By continuing, you agree to our Terms & Privacy.
         </p>
         {feedbackToast && (
           <div style={s.toast}>Thanks! Your feedback helps us improve SourceFlow 🚀</div>
