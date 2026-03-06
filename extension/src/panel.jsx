@@ -329,6 +329,7 @@ export default function Panel() {
   const [shortlisting, setShortlisting] = useState(false);
   const [country, setCountry] = useState("IN");
   const [isEmailVerified, setIsEmailVerified] = useState(true);
+  const [showCopiedSnackbar, setShowCopiedSnackbar] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -437,6 +438,25 @@ export default function Panel() {
 
   return (
     <div style={styles.container}>
+      {showCopiedSnackbar && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "#1a1a1a",
+            color: "#fff",
+            padding: "10px 20px",
+            borderRadius: "8px",
+            fontSize: "14px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+            zIndex: 10001,
+          }}
+        >
+          Copied to clipboard
+        </div>
+      )}
       <div style={styles.header}>
         <h3 style={styles.logo}>SourceFlow</h3>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -561,7 +581,11 @@ export default function Panel() {
               <div style={styles.message}>{result.outreach_message}</div>
               <button
                 style={{ ...styles.button, marginTop: "8px", backgroundColor: "transparent", color: COLORS.primary, border: `1px solid ${COLORS.primary}`, fontSize: "12px", padding: "8px" }}
-                onClick={() => navigator.clipboard.writeText(result.outreach_message)}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(result.outreach_message);
+                  setShowCopiedSnackbar(true);
+                  setTimeout(() => setShowCopiedSnackbar(false), 2500);
+                }}
               >
                 Copy Outreach Message
               </button>
