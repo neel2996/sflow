@@ -24,13 +24,20 @@ public class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly EmailService _email;
     private readonly IWebHostEnvironment _env;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(AppDbContext db, IConfiguration config, EmailService email, IWebHostEnvironment env)
+    public AuthController(
+        AppDbContext db,
+        IConfiguration config,
+        EmailService email,
+        IWebHostEnvironment env,
+        ILogger<AuthController> logger)
     {
         _db = db;
         _config = config;
         _email = email;
         _env = env;
+        _logger = logger;
     }
 
     [HttpPost("register")]
@@ -109,9 +116,15 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+        var requestedEmail = (req.Email ?? string.Empty).Trim();
+        _logger.LogInformation("ForgotPassword requested. Email={MaskedEmail}", MaskEmail(requestedEmail));
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == requestedEmail);
         if (user == null)
+        {
+            _logger.LogInformation("ForgotPassword skipped send. User not found. Email={MaskedEmail}", MaskEmail(requestedEmail));
             return Ok(new { message = "If that email exists, we've sent a reset link." });
+        }
 
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace("+", "-").Replace("/", "_").TrimEnd('=');
         user.PasswordResetToken = token;
@@ -123,7 +136,12 @@ public class AuthController : ControllerBase
 
         var sent = await _email.SendPasswordResetAsync(user.Email, resetLink);
         if (!sent)
+        {
+            _logger.LogWarning("ForgotPassword email send failed. Email={MaskedEmail}", MaskEmail(user.Email));
             return StatusCode(500, new { error = "Email not configured. Set Brevo:ApiKey and Brevo:FromEmail." });
+        }
+
+        _logger.LogInformation("ForgotPassword email sent. Email={MaskedEmail}", MaskEmail(user.Email));
 
         return Ok(new { message = "If that email exists, we've sent a reset link." });
     }
@@ -247,5 +265,16 @@ public class AuthController : ControllerBase
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
         return Convert.ToHexString(bytes);
+    }
+
+    private static string MaskEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return "(empty)";
+        var parts = email.Split('@');
+        if (parts.Length != 2) return "***";
+        var local = parts[0];
+        var domain = parts[1];
+        var first = local.Length > 0 ? local[0] : '*';
+        return $"{first}***@{domain}";
     }
 }
