@@ -43,13 +43,17 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest req)
     {
-        if (await _db.Users.AnyAsync(u => u.Email == req.Email))
+        var normalizedEmail = NormalizeEmail(req.Email);
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+            return BadRequest(new { error = "Email is required" });
+
+        if (await _db.Users.AnyAsync(u => u.Email == normalizedEmail))
             return BadRequest(new { error = "Email already registered" });
 
         var (verificationOtp, verificationOtpHash, verificationExpiry) = GetEmailVerificationOtp();
         var user = new User
         {
-            Email = req.Email,
+            Email = normalizedEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             CreditsBalance = 50,
             Country = req.Country ?? "IN",
@@ -99,7 +103,8 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest req)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
+        var normalizedEmail = NormalizeEmail(req.Email);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail);
         if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized(new { error = "Invalid credentials" });
 
@@ -116,7 +121,7 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
-        var requestedEmail = (req.Email ?? string.Empty).Trim();
+        var requestedEmail = NormalizeEmail(req.Email);
         _logger.LogInformation("ForgotPassword requested. Email={MaskedEmail}", MaskEmail(requestedEmail));
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == requestedEmail);
@@ -276,5 +281,10 @@ public class AuthController : ControllerBase
         var domain = parts[1];
         var first = local.Length > 0 ? local[0] : '*';
         return $"{first}***@{domain}";
+    }
+
+    private static string NormalizeEmail(string? email)
+    {
+        return (email ?? string.Empty).Trim().ToLowerInvariant();
     }
 }
