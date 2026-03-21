@@ -70,18 +70,17 @@
       document.getElementById("error").style.display = "none";
       document.getElementById("not-auth").style.display = "none";
 
-      if (!token) {
-        document.getElementById("loading").style.display = "none";
-        document.getElementById("not-auth").style.display = "block";
-        return;
-      }
-
       try {
-        // Use backend as source of truth for country (from Users table)
-        const me = await api("GET", "/user/me");
-        if (me && me.country) {
-          country = String(me.country).trim();
-          isIndia = country.toUpperCase() === "IN" || country.toUpperCase() === "INDIA";
+        // If authenticated, use backend as source of truth for country.
+        // If not authenticated, still render plans using URL/default country.
+        if (token) {
+          const me = await api("GET", "/user/me");
+          if (me && me.country) {
+            country = String(me.country).trim();
+            isIndia = country.toUpperCase() === "IN" || country.toUpperCase() === "INDIA";
+          }
+        } else {
+          document.getElementById("not-auth").style.display = "block";
         }
 
         let [plans, config] = await Promise.all([
@@ -134,7 +133,7 @@
               <input type="number" min="1" max="10000" placeholder="e.g. 50" id="custom-credits-${i}" class="custom-credits-input" data-index="${i}" style="width:100%;max-width:120px;padding:10px 12px;border:1px solid #0073b1;border-radius:6px;font-size:16px;box-sizing:border-box;" />
             </div>
           ` : "";
-          const buyBtnDisabled = isCustom ? " disabled" : "";
+          const buyBtnDisabled = (!token || isCustom) ? " disabled" : "";
           div.innerHTML = `
             <div style="flex:1;">
               <div class="plan-name">${escapeHtml(p.name)}</div>
@@ -142,8 +141,8 @@
               ${customInput}
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
-              ${mockEnabled && p.provider === "razorpay" ? `<button class="buy-btn mock-btn" data-index="${i}"${buyBtnDisabled}>Test (mock)</button>` : ""}
-              <button class="buy-btn buy-btn-main" data-index="${i}"${buyBtnDisabled}>${isIndia ? "Buy" : "Subscribe"}</button>
+              ${token && mockEnabled && p.provider === "razorpay" ? `<button class="buy-btn mock-btn" data-index="${i}"${buyBtnDisabled}>Test (mock)</button>` : ""}
+              <button class="buy-btn buy-btn-main" data-index="${i}"${buyBtnDisabled}>${token ? (isIndia ? "Buy" : "Subscribe") : "Log in to buy"}</button>
             </div>
           `;
           container.appendChild(div);
@@ -184,13 +183,13 @@
           };
         });
 
-        // Enable Buy button for custom plan only when valid credits (1–10000) entered
+        // Enable Buy button for custom plan only when valid credits (1–10000) entered and user is authenticated
         container.querySelectorAll(".custom-credits-input").forEach(input => {
           const updateButtons = () => {
             const val = parseInt(input.value, 10);
             const valid = !isNaN(val) && val >= 1 && val <= 10000;
             const idx = input.dataset.index;
-            container.querySelectorAll(`.buy-btn[data-index="${idx}"]`).forEach(b => { b.disabled = !valid; });
+            container.querySelectorAll(`.buy-btn[data-index="${idx}"]`).forEach(b => { b.disabled = !token || !valid; });
           };
           input.addEventListener("input", updateButtons);
           input.addEventListener("change", updateButtons);
