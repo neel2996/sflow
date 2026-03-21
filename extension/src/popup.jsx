@@ -54,6 +54,7 @@ function App() {
     const token = await getToken();
     if (!token) {
       setView("auth");
+      setError("");
       return;
     }
     try {
@@ -70,7 +71,8 @@ function App() {
     } catch (err) {
       await clearAuth();
       setView("auth");
-      setError(err?.statusCode === 401 ? "Your session has expired. Please log in again." : "");
+      // During startup, silently recover from stale tokens.
+      setError("");
     }
   }
 
@@ -93,7 +95,10 @@ function App() {
       setView("dashboard");
     } catch (err) {
       if (err?.statusCode === 401) {
-        setError("Your session has expired. Please log in again.");
+        await clearAuth();
+        setView("auth");
+        const apiMessage = String(err?.message || "").trim();
+        setError(apiMessage || "Invalid email or password.");
       } else {
         setError(err.message);
       }

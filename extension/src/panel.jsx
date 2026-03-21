@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { api, getToken } from "./api.js";
+import { api, clearAuth, getToken } from "./api.js";
 
 const COLORS = {
   primary: "#0073b1",
@@ -206,8 +206,8 @@ function computeTotalExperience() {
     const start = parseMonthYear(startStr);
     const end = parseMonthYear(endStr);
     if (!start || !end || end < start) continue;
-    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-    if (isPresent) months += 1;
+    // Inclusive: both start and end months count (e.g. Nov 2023 → Jun 2025 = 20 months)
+    let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
     if (months <= 0 || months > 600) continue;
     const key = `${start.getFullYear()}-${start.getMonth()}|${end.getFullYear()}-${end.getMonth()}`;
     if (seen.has(key)) continue;
@@ -241,19 +241,10 @@ function computeTotalExperience() {
   let totalMonths = 0;
   const roles = [];
   for (const r of merged) {
-    let mo = (r.end.getFullYear() - r.start.getFullYear()) * 12 + (r.end.getMonth() - r.start.getMonth());
-    if (r.isPresent) mo += 1;
+    // Inclusive: both start and end months count
+    let mo = (r.end.getFullYear() - r.start.getFullYear()) * 12 + (r.end.getMonth() - r.start.getMonth()) + 1;
     totalMonths += mo;
     roles.push({ text: `${mo} mos`, months: mo });
-  }
-
-  // Boundary-inclusive normalization: include one boundary month overall.
-  if (totalMonths > 0) {
-    totalMonths += 1;
-    if (roles.length > 0) {
-      roles[0].months += 1;
-      roles[0].text = `${roles[0].months} mos`;
-    }
   }
 
   const years = Math.round((totalMonths / 12) * 10) / 10;
@@ -343,7 +334,7 @@ export default function Panel() {
 
   async function checkAuth() {
     const token = await getToken();
-    if (!token) { setAuthed(false); return; }
+    if (!token) { setAuthed(false); setError(""); return; }
     try {
       const me = await api.getMe();
       setAuthed(true);
@@ -356,7 +347,8 @@ export default function Panel() {
     } catch (err) {
       setAuthed(false);
       if (err?.statusCode === 401) {
-        setError("Your session has expired. Please open the extension and log in again.");
+        await clearAuth();
+        setError("Please open the extension and log in.");
       }
     }
   }

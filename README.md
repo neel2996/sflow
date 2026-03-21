@@ -36,6 +36,55 @@ SourceFlow/
     └── package.json
 ```
 
+## Build and Run
+
+### Option A: Quick start (recommended)
+
+1. Build and run the backend:
+
+```bash
+cd backend/SourceFlow.Api
+dotnet restore
+dotnet build
+dotnet run
+```
+
+2. In a new terminal, build the extension:
+
+```bash
+cd extension
+npm install
+npm run build
+```
+
+3. Load the extension in Chrome:
+
+- Open `chrome://extensions/`
+- Enable **Developer mode**
+- Click **Load unpacked**
+- Select the `extension/` folder
+
+4. Open the SourceFlow extension popup and log in/register.
+
+### Option B: Development mode (auto-rebuild extension)
+
+Run backend in one terminal:
+
+```bash
+cd backend/SourceFlow.Api
+dotnet run
+```
+
+Run extension watcher in another terminal:
+
+```bash
+cd extension
+npm install
+npm run watch
+```
+
+After code changes, refresh the extension card in `chrome://extensions/`.
+
 ## Backend Setup
 
 ### 1. Configure appsettings.json

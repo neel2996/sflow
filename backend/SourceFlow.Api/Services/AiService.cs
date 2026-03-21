@@ -53,6 +53,8 @@ public class AiService
             50-69  = partial match
             30-49  = weak match
             0-29   = poor match
+
+            Company prestige: Give a modest boost to those with experince in product based. Use this to differentiate otherwise comparable candidates, but never let it override a poor skill fit.
             """;
 
         var requestBody = new
@@ -63,7 +65,7 @@ public class AiService
                 new
                 {
                     role = "system",
-                    content = "Act as a senior technical recruiter. Compare job descriptions against LinkedIn profiles. Be strict and realistic. Prioritize real experience over keywords. Detect seniority level and calculate total years of experience from role durations. Ignore fluff. Return STRICT JSON only."
+                    content = "Act as a senior technical recruiter. Compare job descriptions against LinkedIn profiles. Be strict and realistic. Prioritize real experience over keywords. Consider company prestige: give a modest boost to candidates with product based comopanies. Detect seniority from role durations. Ignore fluff. Return STRICT JSON only."
                 },
                 new { role = "user", content = userPrompt }
             },

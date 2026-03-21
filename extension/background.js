@@ -1,7 +1,11 @@
-// const API_BASE = "http://localhost:8080";
-const API_BASE = "https://sflow-5diw.onrender.com";
-chrome.runtime.onInstalled.addListener(() => {
+ const API_BASE = "http://localhost:8080";
+//const API_BASE = "https://sflow-5diw.onrender.com";
+chrome.runtime.onInstalled.addListener(async (details) => {
   console.log("SourceFlow extension installed");
+  if (details.reason === "install") {
+    // Ensure a truly fresh auth state after reinstall/new install.
+    await chrome.storage.local.remove(["token", "email"]);
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

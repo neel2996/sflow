@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -17,15 +18,19 @@ namespace SourceFlow.Api.Controllers;
 [Route("auth")]
 public class AuthController : ControllerBase
 {
+    private const string LocalDevOtp = "123456";
+
     private readonly AppDbContext _db;
     private readonly IConfiguration _config;
     private readonly EmailService _email;
+    private readonly IWebHostEnvironment _env;
 
-    public AuthController(AppDbContext db, IConfiguration config, EmailService email)
+    public AuthController(AppDbContext db, IConfiguration config, EmailService email, IWebHostEnvironment env)
     {
         _db = db;
         _config = config;
         _email = email;
+        _env = env;
     }
 
     [HttpPost("register")]
@@ -34,7 +39,7 @@ public class AuthController : ControllerBase
         if (await _db.Users.AnyAsync(u => u.Email == req.Email))
             return BadRequest(new { error = "Email already registered" });
 
-        var (verificationOtp, verificationOtpHash, verificationExpiry) = CreateEmailVerificationOtp();
+        var (verificationOtp, verificationOtpHash, verificationExpiry) = GetEmailVerificationOtp();
         var user = new User
         {
             Email = req.Email,
@@ -60,7 +65,9 @@ public class AuthController : ControllerBase
         });
         await _db.SaveChangesAsync();
 
-        var sent = await _email.SendEmailVerificationOtpAsync(user.Email, verificationOtp);
+        var sent = _env.IsDevelopment()
+            ? true
+            : await _email.SendEmailVerificationOtpAsync(user.Email, verificationOtp);
         if (!sent)
         {
             var signupBonus = await _db.CreditTransactions
@@ -188,13 +195,15 @@ public class AuthController : ControllerBase
         if (user.EmailVerificationSentAt.HasValue && user.EmailVerificationSentAt.Value > DateTime.UtcNow.AddMinutes(-1))
             return StatusCode(429, new { error = "Please wait before requesting another verification email." });
 
-        var (otp, otpHash, expiry) = CreateEmailVerificationOtp();
+        var (otp, otpHash, expiry) = GetEmailVerificationOtp();
         user.EmailVerificationTokenHash = otpHash;
         user.EmailVerificationExpiry = expiry;
         user.EmailVerificationSentAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
 
-        var sent = await _email.SendEmailVerificationOtpAsync(user.Email, otp);
+        var sent = _env.IsDevelopment()
+            ? true
+            : await _email.SendEmailVerificationOtpAsync(user.Email, otp);
         if (!sent)
             return StatusCode(500, new { error = "Email not configured. Set Brevo:ApiKey and Brevo:FromEmail." });
 
@@ -223,8 +232,13 @@ public class AuthController : ControllerBase
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private static (string Otp, string OtpHash, DateTime Expiry) CreateEmailVerificationOtp()
+    private (string Otp, string OtpHash, DateTime Expiry) GetEmailVerificationOtp()
     {
+        if (_env.IsDevelopment())
+        {
+            var hash = HashToken(LocalDevOtp);
+            return (LocalDevOtp, hash, DateTime.UtcNow.AddMinutes(10));
+        }
         var otp = RandomNumberGenerator.GetInt32(0, 1000000).ToString("D6");
         return (otp, HashToken(otp), DateTime.UtcNow.AddMinutes(10));
     }

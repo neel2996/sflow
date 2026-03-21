@@ -197,9 +197,7 @@ app.Run();
 
 static async Task SeedPlansAsync(AppDbContext db)
 {
-    if (await db.Plans.AnyAsync()) return;
-
-    var plans = new[]
+    var defaultPlans = new[]
     {
         // India — credit packs (Razorpay)
         new SourceFlow.Api.Models.Plan { Name = "Starter", Price = 99, Currency = "INR", Credits = 50, BillingType = "one_time", Provider = "razorpay", PlanType = "credit_pack" },
@@ -215,6 +213,30 @@ static async Task SeedPlansAsync(AppDbContext db)
         new SourceFlow.Api.Models.Plan { Name = "Pro", Price = 49, Currency = "USD", Credits = 2000, BillingType = "subscription", Provider = "paddle", PaddlePriceId = "pri_pro", PlanType = "credit_pack" },
     };
 
-    db.Plans.AddRange(plans);
+    var existing = await db.Plans
+        .Select(p => new
+        {
+            Name = p.Name.ToLower(),
+            Currency = p.Currency.ToUpper(),
+            Provider = p.Provider.ToLower(),
+            PlanType = (p.PlanType ?? "credit_pack").ToLower(),
+            BillingType = (p.BillingType ?? "").ToLower(),
+            IsCustom = p.IsCustom
+        })
+        .ToListAsync();
+
+    bool Exists(SourceFlow.Api.Models.Plan p) =>
+        existing.Any(e =>
+            e.Name == p.Name.ToLower() &&
+            e.Currency == p.Currency.ToUpper() &&
+            e.Provider == p.Provider.ToLower() &&
+            e.PlanType == (p.PlanType ?? "credit_pack").ToLower() &&
+            e.BillingType == (p.BillingType ?? "").ToLower() &&
+            e.IsCustom == p.IsCustom);
+
+    var missingPlans = defaultPlans.Where(p => !Exists(p)).ToList();
+    if (missingPlans.Count == 0) return;
+
+    db.Plans.AddRange(missingPlans);
     await db.SaveChangesAsync();
 }
